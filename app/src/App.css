@@ -68,7 +68,28 @@
 .obtn { border: 1px solid #d3d8e0; background: #fff; border-radius: 8px; padding: 7px 10px; font-size: 12px; font-weight: 600; cursor: pointer; color: #2b3140; }
 .obtn:hover { border-color: #9aa6bd; }
 
+/* loading overlay */
+.loading { position: absolute; inset: 0; z-index: 800; display: flex; align-items: center; justify-content: center; gap: 12px;
+  background: rgba(15,22,35,.72); color: #fff; font-size: 15px; font-weight: 600; }
+.spin { width: 20px; height: 20px; border: 3px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: sp .8s linear infinite; }
+@keyframes sp { to { transform: rotate(360deg); } }
+
+/* locate button on map */
+.locate-fab { position: absolute; right: 12px; bottom: 70px; z-index: 700; width: 44px; height: 44px; border-radius: 50%;
+  border: 0; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.35); font-size: 20px; cursor: pointer; color: #2563eb; }
+
+/* mobile map/list toggle (hidden on desktop) */
+.mtoggle { display: none; }
+
 @media (max-width: 720px) {
-  .side { width: 100%; position: absolute; inset: 0; z-index: 1000; }
-  .mapwrap { position: absolute; inset: 0; }
+  .side { width: 100%; }
+  .body.m-map .side { display: none; }
+  .body.m-list .mapwrap { display: none; }
+  .cov { display: none; }
+  .seg button { padding: 6px 14px; }
+  .detail { left: 12px; right: 12px; top: 12px; width: auto; }
+  .mtoggle { display: flex; position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 1200; background: #0f1623; border-radius: 11px; padding: 4px; box-shadow: 0 4px 18px rgba(0,0,0,.45); }
+  .mtoggle button { border: 0; background: transparent; color: #9aa6bd; font-weight: 700; padding: 10px 28px; border-radius: 8px; font-size: 14px; }
+  .mtoggle button.on { background: #2563eb; color: #fff; }
 }

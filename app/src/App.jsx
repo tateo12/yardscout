@@ -20,9 +20,9 @@ const LS_KEY = "yardscout.knocks.v1";
 
 const styleFor = (feat, knocks) => {
   const k = knocks[feat.properties._id];
-  if (k) return { color: "#fff", weight: k.outcome === "booked" ? 2 : 0.6,
-                  fillColor: OUT[k.outcome].color, fillOpacity: 0.85 };
-  return { color: "#fff", weight: 0.5, fillColor: TIER[feat.properties.tier].color, fillOpacity: 0.55 };
+  if (k) return { color: "#fff", weight: k.outcome === "booked" ? 2.5 : 1,
+                  fillColor: OUT[k.outcome].color, fillOpacity: 0.9 };
+  return { color: TIER[feat.properties.tier].color, weight: 1, fillColor: TIER[feat.properties.tier].color, fillOpacity: 0.28 };
 };
 
 export default function App() {
@@ -38,6 +38,8 @@ export default function App() {
   const [mode, setMode] = useState("field");
   const [selected, setSelected] = useState(null);
   const [filter, setFilter] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [mView, setMView] = useState("map"); // mobile only: map | list
 
   useEffect(() => { knocksRef.current = knocks; localStorage.setItem(LS_KEY, JSON.stringify(knocks)); }, [knocks]);
 
@@ -60,13 +62,15 @@ export default function App() {
         },
       }).addTo(map);
       setFeatures(fc.features.map((f) => f.properties));
-    });
+      setLoading(false);
+    }).catch(() => setLoading(false));
 
     return () => { map.remove(); mapRef.current = null; idToLayer.current = {}; };
   }, []);
 
   const selectParcel = (id) => {
     setSelected(id);
+    setMView("map");
     const lyr = idToLayer.current[id];
     if (lyr && mapRef.current) mapRef.current.flyTo(lyr.getBounds().getCenter(), 19, { duration: 0.6 });
   };
@@ -137,7 +141,7 @@ export default function App() {
         <div className="cov">{stats.knocked}/{stats.total} knocked</div>
       </header>
 
-      <div className="body">
+      <div className={"body " + (mView === "map" ? "m-map" : "m-list")}>
         <aside className="side">
           {mode === "field" ? (
             <>
@@ -197,6 +201,8 @@ export default function App() {
 
         <main className="mapwrap">
           <div id="map" />
+          {loading && <div className="loading"><div className="spin" />Loading {`9,693`} parcels…</div>}
+          <button className="locate-fab" title="Locate me" onClick={locateMe}>◎</button>
           <div className="legend">
             <span><i style={{ background: TIER["green-drive"].color }} />Back it in</span>
             <span><i style={{ background: TIER["green-crane"].color }} />Crane it in</span>
@@ -227,6 +233,11 @@ export default function App() {
             </div>
           )}
         </main>
+      </div>
+
+      <div className="mtoggle">
+        <button className={mView === "map" ? "on" : ""} onClick={() => setMView("map")}>Map</button>
+        <button className={mView === "list" ? "on" : ""} onClick={() => setMView("list")}>List</button>
       </div>
     </div>
   );
