@@ -1,0 +1,74 @@
+.app { display: flex; flex-direction: column; height: 100%; }
+
+/* header */
+.top {
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 16px; background: #0f1623; color: #fff; flex: 0 0 auto;
+  box-shadow: 0 1px 8px rgba(0,0,0,.25); z-index: 1100;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand .logo { font-size: 20px; color: #21a567; }
+.brand b { font-size: 16px; letter-spacing: .2px; }
+.brand small { display: block; color: #8a93a6; font-size: 11px; }
+.seg { display: flex; background: #1c2636; border-radius: 9px; padding: 3px; margin-left: 8px; }
+.seg button {
+  border: 0; background: transparent; color: #9aa6bd; font-weight: 600;
+  padding: 6px 16px; border-radius: 7px; cursor: pointer; font-size: 13px;
+}
+.seg button.on { background: #2563eb; color: #fff; }
+.cov { margin-left: auto; color: #b7c0d3; font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* layout */
+.body { display: flex; flex: 1 1 auto; min-height: 0; }
+.side { width: 340px; flex: 0 0 auto; background: #f5f6f8; border-right: 1px solid #e3e6eb;
+  display: flex; flex-direction: column; min-height: 0; }
+.mapwrap { position: relative; flex: 1 1 auto; min-width: 0; }
+#map { position: absolute; inset: 0; background: #1a1f2b; }
+
+/* sidebar */
+.sidehd { display: flex; gap: 8px; padding: 12px; }
+.sidehd input { flex: 1; padding: 8px 10px; border: 1px solid #d3d8e0; border-radius: 8px; font-size: 13px; }
+.ghost { border: 1px solid #d3d8e0; background: #fff; border-radius: 8px; padding: 0 12px; cursor: pointer; font-size: 12px; font-weight: 600; color: #344; }
+.hint { padding: 6px 14px; color: #7b8494; font-size: 12px; }
+.list { overflow-y: auto; flex: 1 1 auto; }
+.row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; cursor: pointer; border-bottom: 1px solid #ececf0; }
+.row:hover { background: #eef0f4; }
+.row.active { background: #e4ecfb; }
+.dot { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 0 1px rgba(0,0,0,.1); }
+.rowmain { flex: 1 1 auto; min-width: 0; }
+.addr { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta { font-size: 11px; color: #818a99; }
+.badge { font-size: 10px; font-weight: 700; color: #fff; padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
+
+/* office */
+.office { padding: 14px; overflow-y: auto; }
+.cards { display: flex; gap: 8px; margin-bottom: 8px; }
+.card { flex: 1; background: #fff; border: 1px solid #e3e6eb; border-radius: 10px; padding: 10px; text-align: center; }
+.card b { display: block; font-size: 20px; }
+.card span { font-size: 11px; color: #818a99; }
+.office h4 { margin: 16px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #818a99; }
+.statrow { display: flex; align-items: center; gap: 8px; padding: 6px 2px; font-size: 13px; border-bottom: 1px solid #ececf0; }
+.statrow b { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* legend */
+.legend { position: absolute; left: 12px; bottom: 16px; z-index: 600; background: rgba(15,22,35,.85);
+  color: #fff; padding: 8px 12px; border-radius: 9px; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+.legend span { display: flex; align-items: center; gap: 7px; }
+.legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+/* detail card */
+.detail { position: absolute; right: 12px; top: 12px; z-index: 700; width: 270px;
+  background: #fff; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.3); padding: 16px; }
+.detail .x { position: absolute; right: 8px; top: 6px; border: 0; background: transparent; font-size: 20px; cursor: pointer; color: #99a; line-height: 1; }
+.verdict { font-size: 15px; font-weight: 800; }
+.daddr { font-size: 15px; font-weight: 600; margin: 2px 0 8px; }
+.dmeta { font-size: 12px; color: #6b7280; line-height: 1.6; }
+.dlabel { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #818a99; margin: 14px 0 7px; }
+.outcomes { display: flex; flex-wrap: wrap; gap: 6px; }
+.obtn { border: 1px solid #d3d8e0; background: #fff; border-radius: 8px; padding: 7px 10px; font-size: 12px; font-weight: 600; cursor: pointer; color: #2b3140; }
+.obtn:hover { border-color: #9aa6bd; }
+
+@media (max-width: 720px) {
+  .side { width: 100%; position: absolute; inset: 0; z-index: 1000; }
+  .mapwrap { position: absolute; inset: 0; }
+}
