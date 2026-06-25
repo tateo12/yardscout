@@ -26,6 +26,19 @@ const OUTCOMES = [
 ];
 const OUT = Object.fromEntries(OUTCOMES.map((o) => [o.key, o]));
 const CUSTOMER_OUTCOMES = ["booked", "interested"];
+// customer statuses (a "lead" can be added manually; interested/booked also come from map knocks)
+const CUST_STATUS = [
+  { key: "lead",       label: "Lead",       color: "#7c3aed" },
+  { key: "interested", label: "Interested", color: "#06b6d4" },
+  { key: "booked",     label: "Booked",     color: "#2563eb" },
+];
+const CUSTOMER_KEYS = CUST_STATUS.map((s) => s.key);
+const STAT = { ...OUT, lead: { label: "Lead", color: "#7c3aed" } };
+const METHODS = [
+  { key: "", label: "Placement: TBD" },
+  { key: "backin", label: "Back it in" },
+  { key: "crane", label: "Crane it in" },
+];
 const LS_KEY = "yardscout.knocks.v2";
 
 function scoreOf(props) {
@@ -39,8 +52,8 @@ function scoreOf(props) {
 
 const styleFor = (feat, knocks) => {
   const k = knocks[feat.properties._key];
-  if (k) return { color: "#fff", weight: k.outcome === "booked" ? 2.5 : 1,
-                  fillColor: OUT[k.outcome].color, fillOpacity: 0.9 };
+  if (k && k.outcome && STAT[k.outcome]) return { color: "#fff", weight: k.outcome === "booked" ? 2.5 : 1,
+                  fillColor: STAT[k.outcome].color, fillOpacity: 0.9 };
   const t = feat.properties._tier;
   return { color: TIER[t].color, weight: 1, fillColor: TIER[t].color, fillOpacity: 0.28 };
 };
@@ -169,6 +182,36 @@ export default function App() {
     });
   };
 
+  const setStatus = (key, value) => {
+    setKnocks((prev) => {
+      const next = { ...prev, [key]: { ...(prev[key] || {}), outcome: value } };
+      knocksRef.current = next;
+      const lyr = idToLayer.current[key];
+      if (lyr) lyr.setStyle(styleFor(lyr.feature, next));
+      return next;
+    });
+  };
+
+  const addCustomer = () => {
+    const key = "cust_" + crypto.randomUUID();
+    setKnocks((prev) => {
+      const next = { ...prev, [key]: { outcome: "lead", ts: Date.now() } };
+      knocksRef.current = next;
+      return next;
+    });
+    setTab("customers");
+  };
+
+  const removeCustomer = (key) => {
+    setKnocks((prev) => {
+      const next = { ...prev }; delete next[key];
+      knocksRef.current = next;
+      const lyr = idToLayer.current[key];
+      if (lyr) lyr.setStyle(styleFor(lyr.feature, next));
+      return next;
+    });
+  };
+
   const locateMe = () => {
     const map = mapRef.current; if (!map) return;
     map.locate({ setView: true, maxZoom: 18 });
@@ -194,7 +237,7 @@ export default function App() {
 
   const customers = useMemo(
     () => Object.entries(knocks)
-      .filter(([, k]) => CUSTOMER_OUTCOMES.includes(k.outcome))
+      .filter(([, k]) => CUSTOMER_KEYS.includes(k.outcome))
       .map(([key, k]) => ({ key, ...k }))
       .sort((a, b) => b.ts - a.ts),
     [knocks]
@@ -204,8 +247,8 @@ export default function App() {
     const tiers = { green: 0, yellow: 0, red: 0 };
     features.forEach((p) => (tiers[p._tier] += 1));
     const tally = Object.fromEntries(OUTCOMES.map((o) => [o.key, 0]));
-    Object.values(knocks).forEach((k) => k.outcome && (tally[k.outcome] = (tally[k.outcome] || 0) + 1));
-    return { tiers, tally, totalKnocks: Object.values(knocks).filter((k) => k.outcome).length };
+    Object.values(knocks).forEach((k) => k.outcome && OUT[k.outcome] && (tally[k.outcome] += 1));
+    return { tiers, tally, totalKnocks: Object.values(knocks).filter((k) => k.outcome && OUT[k.outcome]).length };
   }, [features, knocks]);
 
   const sel = selected != null ? features.find((p) => p._key === selected) : null;
@@ -226,7 +269,7 @@ export default function App() {
           <div><b>Yardscout</b><small>Salt Lake Valley</small></div>
         </div>
         {loading && <span className="loadtag"><span className="spin sm" />loading yards…</span>}
-        <div className="cov">{customers.length} customers · {stats.totalKnocks} knocks</div>
+        <div className="cov">{customers.length} customer{customers.length === 1 ? "" : "s"} · {stats.totalKnocks} knock{stats.totalKnocks === 1 ? "" : "s"}</div>
       </header>
 
       <div className="content">
@@ -299,19 +342,39 @@ export default function App() {
 
         {tab === "customers" && (
           <section className="panel">
-            <div className="hint">{customers.length} booked / interested</div>
+            <div className="custhd">
+              <span className="hint">{customers.length} customer{customers.length === 1 ? "" : "s"}</span>
+              <button className="addbtn" onClick={addCustomer}>+ Add customer</button>
+            </div>
             <div className="list">
-              {customers.length === 0 && <div className="empty">Mark a yard “Interested” or “Booked” and it shows up here with their contact info.</div>}
+              {customers.length === 0 && <div className="empty">No customers yet. Tap “+ Add customer”, or mark a yard Interested / Booked on the map.</div>}
               {customers.map((c) => (
                 <div key={c.key} className="custcard">
                   <div className="custtop">
-                    <span className="badge" style={{ background: OUT[c.outcome].color }}>{OUT[c.outcome].label}</span>
-                    <button className="link" onClick={() => c.center && flyTo(c.center)}>{c.addr || "(no address)"}</button>
+                    <select className="statsel" value={c.outcome || "lead"} onChange={(e) => setStatus(c.key, e.target.value)}
+                      style={{ color: STAT[c.outcome || "lead"].color }}>
+                      {CUST_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                    </select>
+                    <button className="del" onClick={() => removeCustomer(c.key)}>Remove</button>
                   </div>
-                  <div className="meta2">{c.city}</div>
-                  <input placeholder="Name" value={c.name || ""} onChange={(e) => updateCustomer(c.key, "name", e.target.value)} />
-                  <input placeholder="Phone" value={c.phone || ""} onChange={(e) => updateCustomer(c.key, "phone", e.target.value)} />
+                  <div className="frow">
+                    <input placeholder="Name" value={c.name || ""} onChange={(e) => updateCustomer(c.key, "name", e.target.value)} />
+                    <input placeholder="Phone" inputMode="tel" value={c.phone || ""} onChange={(e) => updateCustomer(c.key, "phone", e.target.value)} />
+                  </div>
+                  <input placeholder="Email" inputMode="email" value={c.email || ""} onChange={(e) => updateCustomer(c.key, "email", e.target.value)} />
+                  <input placeholder="Address" value={c.addr || ""} onChange={(e) => updateCustomer(c.key, "addr", e.target.value)} />
+                  <div className="frow">
+                    <input placeholder="City" value={c.city || ""} onChange={(e) => updateCustomer(c.key, "city", e.target.value)} />
+                    <select value={c.method || ""} onChange={(e) => updateCustomer(c.key, "method", e.target.value)}>
+                      {METHODS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="frow">
+                    <input type="date" value={c.date || ""} onChange={(e) => updateCustomer(c.key, "date", e.target.value)} />
+                    <input type="number" placeholder="Price $" value={c.price || ""} onChange={(e) => updateCustomer(c.key, "price", e.target.value)} />
+                  </div>
                   <textarea placeholder="Notes" rows={2} value={c.notes || ""} onChange={(e) => updateCustomer(c.key, "notes", e.target.value)} />
+                  {c.center && <button className="link" onClick={() => { setTab("map"); flyTo(c.center); }}>Show on map</button>}
                 </div>
               ))}
             </div>

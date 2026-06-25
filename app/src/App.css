@@ -49,12 +49,18 @@
 .badge { font-size: 10px; font-weight: 700; color: #fff; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
 
 /* customer cards */
-.custcard { background: #fff; border-bottom: 1px solid #ececf0; padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; }
+.custhd { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #fff; border-bottom: 1px solid #ececf0; }
+.custhd .hint { padding: 0; }
+.addbtn { border: 0; background: #2563eb; color: #fff; font-weight: 700; font-size: 13px; padding: 9px 14px; border-radius: 9px; cursor: pointer; }
+.custcard { background: #fff; border-bottom: 8px solid #eef0f4; padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; }
 .custtop { display: flex; align-items: center; gap: 10px; }
-.link { border: 0; background: transparent; color: #1f4fd1; font-weight: 600; font-size: 14px; cursor: pointer; padding: 0; text-align: left; }
-.meta2 { font-size: 11px; color: #818a99; margin-top: -4px; }
-.custcard input, .custcard textarea, .custfields input, .custfields textarea {
-  width: 100%; padding: 8px 10px; border: 1px solid #d8dce3; border-radius: 8px; font-size: 13px; font-family: inherit; }
+.statsel { font-weight: 700; font-size: 13px; border: 1px solid #d8dce3; border-radius: 8px; padding: 7px 10px; background: #fff; font-family: inherit; }
+.del { margin-left: auto; border: 0; background: transparent; color: #c2453f; font-size: 12px; font-weight: 600; cursor: pointer; }
+.link { border: 0; background: transparent; color: #1f4fd1; font-weight: 600; font-size: 13px; cursor: pointer; padding: 2px 0 0; text-align: left; }
+.frow { display: flex; gap: 7px; }
+.frow > * { flex: 1; min-width: 0; }
+.custcard input, .custcard textarea, .custcard select, .custfields input, .custfields textarea {
+  width: 100%; padding: 9px 10px; border: 1px solid #d8dce3; border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff; }
 
 /* stats */
 .cards { display: flex; gap: 8px; margin-bottom: 8px; }
@@ -80,9 +86,9 @@
 
 /* bottom nav */
 .bottomnav { flex: 0 0 auto; display: flex; background: #0f1623; z-index: 1100;
-  padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -1px 10px rgba(0,0,0,.3); }
+  padding-top: 6px; padding-bottom: calc(env(safe-area-inset-bottom) + 16px); box-shadow: 0 -1px 10px rgba(0,0,0,.3); }
 .bottomnav button { flex: 1; position: relative; border: 0; background: transparent; color: #8a93a6;
-  font-size: 11px; font-weight: 600; padding: 9px 0 8px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  font-size: 11px; font-weight: 600; padding: 10px 0 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .bottomnav button .navicon { font-size: 19px; line-height: 1; }
 .bottomnav button.on { color: #fff; }
 .bottomnav button.on .navicon { color: #21a567; }
