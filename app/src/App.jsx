@@ -92,6 +92,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [zoomedOut, setZoomedOut] = useState(false);
   const [capped, setCapped] = useState(false);
+  const [expanded, setExpanded] = useState(() => new Set());
 
   useEffect(() => { knocksRef.current = knocks; localStorage.setItem(LS_KEY, JSON.stringify(knocks)); }, [knocks]);
 
@@ -207,6 +208,14 @@ export default function App() {
     setKnocks((prev) => { const next = { ...prev }; delete next[key]; knocksRef.current = next;
       const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next)); return next; });
 
+  const toggleExpand = (key) =>
+    setExpanded((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
+  const saveCustomer = (key) => {
+    updateCustomer(key, "saved", true);
+    setExpanded((s) => { const n = new Set(s); n.delete(key); return n; });
+  };
+
   const locateMe = () => {
     const map = mapRef.current; if (!map) return;
     map.locate({ setView: true, maxZoom: 18 });
@@ -301,40 +310,57 @@ export default function App() {
             </div>
             <div className="list">
               {customers.length === 0 && <div className="empty">No customers yet. Tap <b>+ Add</b>, or mark a yard Interested or Booked on the map.</div>}
-              {customers.map((c) => (
-                <div key={c.key} className="custcard">
-                  <div className="custtop">
-                    <select className="statsel" value={c.outcome || "lead"} onChange={(e) => setStatus(c.key, e.target.value)} style={{ color: STAT[c.outcome || "lead"].color }}>
-                      {CUST_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                    </select>
-                    <button className="del" onClick={() => removeCustomer(c.key)}>Remove</button>
+              {customers.map((c) => {
+                const status = STAT[c.outcome || "lead"];
+                const canSave = (c.name || "").trim() && (c.phone || "").trim();
+                if (c.saved && !expanded.has(c.key)) {
+                  return (
+                    <button key={c.key} className="custrow" onClick={() => toggleExpand(c.key)}>
+                      <span className="cdot" style={{ background: status.color }} />
+                      <span className="cname">{c.name}</span>
+                      <span className="cphone">{c.phone}</span>
+                    </button>
+                  );
+                }
+                return (
+                  <div key={c.key} className="custcard">
+                    <div className="custtop">
+                      <select className="statsel" value={c.outcome || "lead"} onChange={(e) => setStatus(c.key, e.target.value)} style={{ color: status.color }}>
+                        {CUST_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                      </select>
+                      <button className="del" onClick={() => removeCustomer(c.key)}>Remove</button>
+                    </div>
+                    <div className="frow">
+                      <input placeholder="Name" value={c.name || ""} onChange={(e) => updateCustomer(c.key, "name", e.target.value)} />
+                      <input placeholder="Phone" inputMode="tel" value={c.phone || ""} onChange={(e) => updateCustomer(c.key, "phone", e.target.value)} />
+                    </div>
+                    <input placeholder="Email" inputMode="email" value={c.email || ""} onChange={(e) => updateCustomer(c.key, "email", e.target.value)} />
+                    <input placeholder="Address" value={c.addr || ""} onChange={(e) => updateCustomer(c.key, "addr", e.target.value)} />
+                    <div className="frow">
+                      <input placeholder="City" value={c.city || ""} onChange={(e) => updateCustomer(c.key, "city", e.target.value)} />
+                      <select value={c.method || ""} onChange={(e) => updateCustomer(c.key, "method", e.target.value)}>
+                        {METHODS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="frow">
+                      <input type="date" value={c.date || ""} onChange={(e) => updateCustomer(c.key, "date", e.target.value)} />
+                      <input type="number" placeholder="Price $" value={c.price || ""} onChange={(e) => updateCustomer(c.key, "price", e.target.value)} />
+                    </div>
+                    <textarea placeholder="Notes" rows={2} value={c.notes || ""} onChange={(e) => updateCustomer(c.key, "notes", e.target.value)} />
+                    <div className="cardactions">
+                      {c.center && <button className="link" onClick={() => { setTab("map"); flyTo(c.center); }}>Show on map →</button>}
+                      {canSave && <button className="savebtn" onClick={() => saveCustomer(c.key)}>Save</button>}
+                    </div>
                   </div>
-                  <div className="frow">
-                    <input placeholder="Name" value={c.name || ""} onChange={(e) => updateCustomer(c.key, "name", e.target.value)} />
-                    <input placeholder="Phone" inputMode="tel" value={c.phone || ""} onChange={(e) => updateCustomer(c.key, "phone", e.target.value)} />
-                  </div>
-                  <input placeholder="Email" inputMode="email" value={c.email || ""} onChange={(e) => updateCustomer(c.key, "email", e.target.value)} />
-                  <input placeholder="Address" value={c.addr || ""} onChange={(e) => updateCustomer(c.key, "addr", e.target.value)} />
-                  <div className="frow">
-                    <input placeholder="City" value={c.city || ""} onChange={(e) => updateCustomer(c.key, "city", e.target.value)} />
-                    <select value={c.method || ""} onChange={(e) => updateCustomer(c.key, "method", e.target.value)}>
-                      {METHODS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-                    </select>
-                  </div>
-                  <div className="frow">
-                    <input type="date" value={c.date || ""} onChange={(e) => updateCustomer(c.key, "date", e.target.value)} />
-                    <input type="number" placeholder="Price $" value={c.price || ""} onChange={(e) => updateCustomer(c.key, "price", e.target.value)} />
-                  </div>
-                  <textarea placeholder="Notes" rows={2} value={c.notes || ""} onChange={(e) => updateCustomer(c.key, "notes", e.target.value)} />
-                  {c.center && <button className="link" onClick={() => { setTab("map"); flyTo(c.center); }}>Show on map →</button>}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}
 
         {tab === "stats" && (
           <section className="panel padded">
+            <div className="swrap">
             <div className="phd">In current view</div>
             <div className="readouts">
               <div className="ro"><b style={{ color: TIER.green.color }}>{stats.tiers.green}</b><span>Room</span></div>
@@ -356,6 +382,7 @@ export default function App() {
               })}
             </div>
             <p className="note">Verdicts use lot size and open space from county records. The deeper back-it-in vs. crane access scoring comes from the building-footprint pass.</p>
+            </div>
           </section>
         )}
       </div>

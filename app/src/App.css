@@ -60,9 +60,19 @@
 .custhd { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--card); border-bottom: 1px solid var(--line); }
 .addbtn { border: 0; background: var(--green); color: #fff; font-weight: 700; font-size: 13px; padding: 9px 16px; border-radius: 10px; cursor: pointer; font-family: inherit; }
 .addbtn:active { transform: scale(.97); }
-.list { overflow-y: auto; flex: 1 1 auto; -webkit-overflow-scrolling: touch; }
-.empty { padding: 40px 26px; color: var(--muted); font-size: 14px; line-height: 1.6; text-align: center; }
-.custcard { background: var(--card); border-bottom: 9px solid var(--snow); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.list { overflow-y: auto; flex: 1 1 auto; -webkit-overflow-scrolling: touch;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; padding: 12px; align-content: start; }
+.empty { grid-column: 1 / -1; padding: 40px 26px; color: var(--muted); font-size: 14px; line-height: 1.6; text-align: center; }
+.custcard { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; align-self: start; }
+/* collapsed saved customer */
+.custrow { display: flex; align-items: center; gap: 11px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; cursor: pointer; text-align: left; font-family: inherit; align-self: start; }
+.custrow:active { background: var(--snow); }
+.cdot { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; }
+.cname { font-size: 15px; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cphone { font-family: var(--mono); font-size: 13px; color: var(--muted); flex: 0 0 auto; }
+.cardactions { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
+.savebtn { margin-left: auto; border: 0; background: var(--green); color: #fff; font-weight: 700; font-size: 14px; padding: 10px 22px; border-radius: 9px; cursor: pointer; font-family: inherit; }
+.savebtn:active { transform: scale(.97); }
 .custtop { display: flex; align-items: center; }
 .statsel { font-weight: 700; font-size: 13px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; background: #fff; font-family: inherit; }
 .del { margin-left: auto; border: 0; background: transparent; color: var(--red); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
@@ -98,6 +108,8 @@
 .navbadge { position: absolute; top: -2px; right: calc(50% - 26px); background: var(--green); color: #fff;
   font-family: var(--mono); font-size: 9px; font-weight: 600; min-width: 16px; height: 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
 
+.swrap { width: 100%; }
 @media (min-width: 760px) {
-  .panel { max-width: 440px; border-right: 1px solid var(--line); }
+  .swrap { max-width: 680px; margin: 0 auto; }
+  .custhd { padding-left: 22px; padding-right: 22px; }
 }
