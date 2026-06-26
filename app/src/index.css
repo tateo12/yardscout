@@ -1,8 +1,23 @@
+:root {
+  --ui: "Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --graphite: #14181e;   /* chrome */
+  --ink:      #1d242d;   /* raised chrome */
+  --snow:     #eef1f0;   /* light panel bg */
+  --card:     #ffffff;
+  --line:     #e0e4e6;
+  --text:     #161b22;
+  --muted:    #6a737e;
+  --green:    #1fa36b;   /* brand / "a yard that works" */
+  --amber:    #f5a524;
+  --red:      #dd5145;
+}
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--ui);
   -webkit-font-smoothing: antialiased;
-  color: #1a1f2b;
-  background: #0f1623; /* matches header so the iPhone safe area / status bar reads dark, not white */
+  color: var(--text);
+  background: var(--graphite);
 }

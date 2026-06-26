@@ -8,28 +8,28 @@ const PARCELS_URL =
 
 // unit + scoring (open-space from parcel attributes; access/crane is the footprint pass)
 const SQFT_PER_ACRE = 43560;
-const UNIT_FT2 = 14 * 66;            // single-wide footprint
-const BACKYARD_FRAC = 0.5;           // assume ~half the open space is usable backyard
-const MIN_ZOOM = 14;
+const UNIT_FT2 = 14 * 66;
+const BACKYARD_FRAC = 0.5;
+const MIN_ZOOM = 16;       // a phone viewport at 16 stays under the 2000-parcel fetch cap = full coverage
+const FETCH_CAP = 2000;
 
 const TIER = {
-  green:  { color: "#21a567", label: "Room to place" },
+  green:  { color: "#1fa36b", label: "Room to place" },
   yellow: { color: "#f5a524", label: "Tight" },
-  red:    { color: "#d64545", label: "No room" },
+  red:    { color: "#dd5145", label: "No room" },
 };
 const OUTCOMES = [
   { key: "booked",         label: "Booked",         color: "#2563eb" },
-  { key: "interested",     label: "Interested",     color: "#06b6d4" },
+  { key: "interested",     label: "Interested",     color: "#0ca5b8" },
   { key: "not_home",       label: "Not home",       color: "#a07b1d" },
   { key: "not_interested", label: "Not interested", color: "#9aa1ab" },
   { key: "blocked",        label: "Can't place",    color: "#4b5563" },
 ];
 const OUT = Object.fromEntries(OUTCOMES.map((o) => [o.key, o]));
 const CUSTOMER_OUTCOMES = ["booked", "interested"];
-// customer statuses (a "lead" can be added manually; interested/booked also come from map knocks)
 const CUST_STATUS = [
   { key: "lead",       label: "Lead",       color: "#7c3aed" },
-  { key: "interested", label: "Interested", color: "#06b6d4" },
+  { key: "interested", label: "Interested", color: "#0ca5b8" },
   { key: "booked",     label: "Booked",     color: "#2563eb" },
 ];
 const CUSTOMER_KEYS = CUST_STATUS.map((s) => s.key);
@@ -52,11 +52,27 @@ function scoreOf(props) {
 
 const styleFor = (feat, knocks) => {
   const k = knocks[feat.properties._key];
-  if (k && k.outcome && STAT[k.outcome]) return { color: "#fff", weight: k.outcome === "booked" ? 2.5 : 1,
-                  fillColor: STAT[k.outcome].color, fillOpacity: 0.9 };
+  if (k && k.outcome && STAT[k.outcome])
+    return { color: "#fff", weight: k.outcome === "booked" ? 2.5 : 1.2, fillColor: STAT[k.outcome].color, fillOpacity: 0.92 };
   const t = feat.properties._tier;
-  return { color: TIER[t].color, weight: 1, fillColor: TIER[t].color, fillOpacity: 0.28 };
+  return { color: TIER[t].color, weight: 1, fillColor: TIER[t].color, fillOpacity: 0.3 };
 };
+
+const Icon = ({ name }) => {
+  const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
+  if (name === "map")
+    return <svg viewBox="0 0 24 24" width="22" height="22" {...p}><path d="M9 4 3.5 6.2v13.3L9 17.3l6 2.2 5.5-2.2V3.8L15 6 9 4Z" /><path d="M9 4v13.3M15 6v13.5" /></svg>;
+  if (name === "customers")
+    return <svg viewBox="0 0 24 24" width="22" height="22" {...p}><circle cx="9" cy="8" r="3.2" /><path d="M3.4 19c0-3.1 2.5-5.3 5.6-5.3s5.6 2.2 5.6 5.3" /><path d="M16.2 5.6a3 3 0 0 1 0 5.7M17 13.9c2.2.5 3.8 2.3 3.8 4.8" /></svg>;
+  return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M5 20V11M12 20V5M19 20v-6" /></svg>;
+};
+
+const Logo = () => (
+  <svg viewBox="0 0 24 24" width="26" height="26" fill="none">
+    <rect x="2.5" y="3.5" width="19" height="17" rx="2.5" stroke="#5b6470" strokeWidth="1.6" />
+    <rect x="12" y="12.5" width="6.5" height="4.5" rx="1" fill="#1fa36b" />
+  </svg>
+);
 
 export default function App() {
   const mapRef = useRef(null);
@@ -66,15 +82,15 @@ export default function App() {
   const reqToken = useRef(0);
   const meMarker = useRef(null);
 
-  const [features, setFeatures] = useState([]);   // parcels currently loaded (viewport)
+  const [features, setFeatures] = useState([]);
   const [knocks, setKnocks] = useState(() => {
     try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; }
   });
-  const [tab, setTab] = useState("map");           // map | prospects | customers | stats
-  const [selected, setSelected] = useState(null);  // parcel _key
-  const [filter, setFilter] = useState("");
+  const [tab, setTab] = useState("map");
+  const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
   const [zoomedOut, setZoomedOut] = useState(false);
+  const [capped, setCapped] = useState(false);
 
   useEffect(() => { knocksRef.current = knocks; localStorage.setItem(LS_KEY, JSON.stringify(knocks)); }, [knocks]);
 
@@ -95,6 +111,7 @@ export default function App() {
       },
     }).addTo(map);
     layerRef.current = layer;
+    setCapped(rawFeatures.length >= FETCH_CAP);
     setFeatures(rawFeatures.map((f) => f.properties));
   }, []);
 
@@ -120,24 +137,16 @@ export default function App() {
     setLoading(true);
     fetch(`${PARCELS_URL}?${params}`)
       .then((r) => r.json())
-      .then((fc) => {
-        if (token !== reqToken.current) return;
-        renderParcels(fc.features || []);
-        setLoading(false);
-      })
+      .then((fc) => { if (token !== reqToken.current) return; renderParcels(fc.features || []); setLoading(false); })
       .catch(() => { if (token === reqToken.current) setLoading(false); });
   }, [renderParcels]);
 
-  // init map once
   useEffect(() => {
-    const map = L.map("map", { preferCanvas: true, zoomControl: true }).setView([40.6655, -111.9925], 16);
+    const map = L.map("map", { preferCanvas: true, zoomControl: true, attributionControl: false }).setView([40.6655, -111.9925], 16);
     mapRef.current = map;
-    L.tileLayer(
-      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      { maxZoom: 20, attribution: "Imagery &copy; Esri" }
-    ).addTo(map);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 20 }).addTo(map);
     let t;
-    const debounced = () => { clearTimeout(t); t = setTimeout(loadViewport, 450); };
+    const debounced = () => { clearTimeout(t); t = setTimeout(loadViewport, 400); };
     map.on("moveend", debounced);
     loadViewport();
     return () => { clearTimeout(t); map.remove(); mapRef.current = null; layerRef.current = null; idToLayer.current = {}; };
@@ -145,27 +154,17 @@ export default function App() {
 
   useEffect(() => { if (tab === "map") setTimeout(() => mapRef.current?.invalidateSize(), 0); }, [tab]);
 
-  const flyTo = (center, zoom = 19) => mapRef.current?.flyTo(center, zoom, { duration: 0.6 });
-
-  const selectParcel = (key, center) => {
-    setSelected(key);
-    setTab("map");
-    const lyr = idToLayer.current[key];
-    if (lyr) flyTo(lyr.getBounds().getCenter());
-    else if (center) flyTo(center);
-  };
+  const flyTo = (center, zoom = 18) => mapRef.current?.flyTo(center, zoom, { duration: 0.6 });
 
   const record = (key, outcome, props, center) => {
     setKnocks((prev) => {
       const next = { ...prev };
       if (prev[key]?.outcome === outcome) {
-        // keep customer details if any, just clear the outcome by deleting when no details
         const keep = prev[key];
         if (keep.name || keep.phone || keep.notes) next[key] = { ...keep, outcome: null };
         else delete next[key];
       } else {
-        next[key] = { ...(prev[key] || {}), outcome, ts: Date.now(),
-                      addr: props?.PARCEL_ADD, city: props?.PARCEL_CITY, center };
+        next[key] = { ...(prev[key] || {}), outcome, ts: Date.now(), addr: props?.PARCEL_ADD, city: props?.PARCEL_CITY, center };
       }
       knocksRef.current = next;
       const lyr = idToLayer.current[key];
@@ -174,72 +173,38 @@ export default function App() {
     });
   };
 
-  const updateCustomer = (key, field, value) => {
-    setKnocks((prev) => {
-      const next = { ...prev, [key]: { ...(prev[key] || {}), [field]: value } };
-      knocksRef.current = next;
-      return next;
-    });
-  };
+  const updateCustomer = (key, field, value) =>
+    setKnocks((prev) => { const next = { ...prev, [key]: { ...(prev[key] || {}), [field]: value } }; knocksRef.current = next; return next; });
 
-  const setStatus = (key, value) => {
+  const setStatus = (key, value) =>
     setKnocks((prev) => {
       const next = { ...prev, [key]: { ...(prev[key] || {}), outcome: value } };
       knocksRef.current = next;
-      const lyr = idToLayer.current[key];
-      if (lyr) lyr.setStyle(styleFor(lyr.feature, next));
+      const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next));
       return next;
     });
-  };
 
   const addCustomer = () => {
     const key = "cust_" + crypto.randomUUID();
-    setKnocks((prev) => {
-      const next = { ...prev, [key]: { outcome: "lead", ts: Date.now() } };
-      knocksRef.current = next;
-      return next;
-    });
+    setKnocks((prev) => { const next = { ...prev, [key]: { outcome: "lead", ts: Date.now() } }; knocksRef.current = next; return next; });
     setTab("customers");
   };
 
-  const removeCustomer = (key) => {
-    setKnocks((prev) => {
-      const next = { ...prev }; delete next[key];
-      knocksRef.current = next;
-      const lyr = idToLayer.current[key];
-      if (lyr) lyr.setStyle(styleFor(lyr.feature, next));
-      return next;
-    });
-  };
+  const removeCustomer = (key) =>
+    setKnocks((prev) => { const next = { ...prev }; delete next[key]; knocksRef.current = next;
+      const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next)); return next; });
 
   const locateMe = () => {
     const map = mapRef.current; if (!map) return;
     map.locate({ setView: true, maxZoom: 18 });
     map.once("locationfound", (e) => {
       if (meMarker.current) meMarker.current.remove();
-      meMarker.current = L.circleMarker(e.latlng, { radius: 8, color: "#fff", weight: 2, fillColor: "#2563eb", fillOpacity: 1 }).addTo(map);
+      meMarker.current = L.circleMarker(e.latlng, { radius: 8, color: "#fff", weight: 2, fillColor: "#1fa36b", fillOpacity: 1 }).addTo(map);
     });
   };
 
-  const prospects = useMemo(() => {
-    const rank = { green: 0, yellow: 1, red: 2 };
-    const q = filter.trim().toLowerCase();
-    return features
-      .filter((p) => p._tier !== "red")
-      .filter((p) => !q || (p.PARCEL_ADD || "").toLowerCase().includes(q))
-      .sort((a, b) => {
-        const ak = knocks[a._key] ? 1 : 0, bk = knocks[b._key] ? 1 : 0;
-        if (ak !== bk) return ak - bk;
-        if (rank[a._tier] !== rank[b._tier]) return rank[a._tier] - rank[b._tier];
-        return (a.PARCEL_ADD || "").localeCompare(b.PARCEL_ADD || "");
-      });
-  }, [features, knocks, filter]);
-
   const customers = useMemo(
-    () => Object.entries(knocks)
-      .filter(([, k]) => CUSTOMER_KEYS.includes(k.outcome))
-      .map(([key, k]) => ({ key, ...k }))
-      .sort((a, b) => b.ts - a.ts),
+    () => Object.entries(knocks).filter(([, k]) => CUSTOMER_KEYS.includes(k.outcome)).map(([key, k]) => ({ key, ...k })).sort((a, b) => b.ts - a.ts),
     [knocks]
   );
 
@@ -255,51 +220,53 @@ export default function App() {
   const selKnock = selected != null ? knocks[selected] : null;
 
   const TABS = [
-    { key: "map", label: "Map", icon: "▦" },
-    { key: "prospects", label: "Prospects", icon: "≡" },
-    { key: "customers", label: "Customers", icon: "★" },
-    { key: "stats", label: "Stats", icon: "▮" },
+    { key: "map", label: "Map" },
+    { key: "customers", label: "Customers" },
+    { key: "stats", label: "Stats" },
   ];
 
   return (
     <div className="app">
       <header className="top">
-        <div className="brand">
-          <span className="logo">▦</span>
-          <div><b>Yardscout</b><small>Salt Lake Valley</small></div>
+        <Logo />
+        <div className="title"><b>Yardscout</b><small>Salt Lake Valley</small></div>
+        {loading && <span className="loadtag"><span className="spin sm" />loading</span>}
+        <div className="cov">
+          <span className="num">{customers.length}</span><span className="lab">cust</span>
+          <span className="num">{stats.totalKnocks}</span><span className="lab">knock</span>
         </div>
-        {loading && <span className="loadtag"><span className="spin sm" />loading yards…</span>}
-        <div className="cov">{customers.length} customer{customers.length === 1 ? "" : "s"} · {stats.totalKnocks} knock{stats.totalKnocks === 1 ? "" : "s"}</div>
       </header>
 
       <div className="content">
-        {/* map is always mounted so Leaflet keeps its size */}
         <main className="mapwrap" style={{ display: tab === "map" ? "block" : "none" }}>
           <div id="map" />
           {zoomedOut && <div className="zoommsg">Zoom in to load yards</div>}
-          <button className="locate-fab" title="Locate me" onClick={locateMe}>◎</button>
+          {!zoomedOut && capped && <div className="zoommsg">Zoom in to load every yard here</div>}
+          <button className="locate-fab" title="Locate me" onClick={locateMe} aria-label="Locate me">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3.4" /><path d="M12 2v3.2M12 18.8V22M2 12h3.2M18.8 12H22" /></svg>
+          </button>
           <div className="legend">
-            <span><i style={{ background: TIER.green.color }} />Room to place</span>
+            <span><i style={{ background: TIER.green.color }} />Room</span>
             <span><i style={{ background: TIER.yellow.color }} />Tight</span>
             <span><i style={{ background: TIER.red.color }} />No room</span>
           </div>
           {sel && (
             <div className="detail">
-              <button className="x" onClick={() => setSelected(null)}>×</button>
-              <div className="verdict" style={{ color: TIER[sel._tier].color }}>{TIER[sel._tier].label}</div>
+              <button className="x" onClick={() => setSelected(null)} aria-label="Close">×</button>
+              <div className="vchip" style={{ background: TIER[sel._tier].color }}>{TIER[sel._tier].label}</div>
               <div className="daddr">{sel.PARCEL_ADD || "(no address)"}</div>
-              <div className="dmeta">
-                {sel.PARCEL_CITY} · {sel.PARCEL_ACRES} ac · house {sel.BLDG_SQFT?.toLocaleString() || "?"} sqft
+              <div className="dcity">{sel.PARCEL_CITY}</div>
+              <div className="readout">
+                <div><b>{sel.PARCEL_ACRES}</b><span>acres</span></div>
+                <div><b>{(sel.BLDG_SQFT || 0).toLocaleString()}</b><span>house sqft</span></div>
+                <div><b>{Math.round((sel.PARCEL_ACRES || 0) * SQFT_PER_ACRE - (sel.BLDG_SQFT || 0)).toLocaleString()}</b><span>open sqft</span></div>
               </div>
               <div className="dlabel">Log a knock</div>
               <div className="outcomes">
                 {OUTCOMES.map((o) => (
-                  <button key={o.key}
-                    className={"obtn" + (selKnock?.outcome === o.key ? " sel" : "")}
+                  <button key={o.key} className={"obtn" + (selKnock?.outcome === o.key ? " sel" : "")}
                     style={selKnock?.outcome === o.key ? { background: o.color, borderColor: o.color, color: "#fff" } : {}}
-                    onClick={() => record(sel._key, o.key, sel, idToLayer.current[sel._key]?.getBounds().getCenter())}>
-                    {o.label}
-                  </button>
+                    onClick={() => record(sel._key, o.key, sel, idToLayer.current[sel._key]?.getBounds().getCenter())}>{o.label}</button>
                 ))}
               </div>
               {CUSTOMER_OUTCOMES.includes(selKnock?.outcome) && (
@@ -313,46 +280,18 @@ export default function App() {
           )}
         </main>
 
-        {tab === "prospects" && (
-          <section className="panel">
-            <div className="sidehd">
-              <input placeholder="Filter by street..." value={filter} onChange={(e) => setFilter(e.target.value)} />
-            </div>
-            <div className="hint">
-              {zoomedOut ? "Zoom in on the map to load this area."
-                : `${prospects.length.toLocaleString()} in view · unknocked first`}
-            </div>
-            <div className="list">
-              {prospects.slice(0, 300).map((p) => {
-                const k = knocks[p._key];
-                return (
-                  <div key={p._key} className="row" onClick={() => selectParcel(p._key)}>
-                    <span className="dot" style={{ background: k ? OUT[k.outcome]?.color : TIER[p._tier].color }} />
-                    <div className="rowmain">
-                      <div className="addr">{p.PARCEL_ADD || "(no address)"}</div>
-                      <div className="meta">{p.PARCEL_CITY} · {TIER[p._tier].label}</div>
-                    </div>
-                    {k?.outcome && <span className="badge" style={{ background: OUT[k.outcome].color }}>{OUT[k.outcome].label}</span>}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
         {tab === "customers" && (
           <section className="panel">
             <div className="custhd">
-              <span className="hint">{customers.length} customer{customers.length === 1 ? "" : "s"}</span>
-              <button className="addbtn" onClick={addCustomer}>+ Add customer</button>
+              <span className="phd">Customers</span>
+              <button className="addbtn" onClick={addCustomer}>+ Add</button>
             </div>
             <div className="list">
-              {customers.length === 0 && <div className="empty">No customers yet. Tap “+ Add customer”, or mark a yard Interested / Booked on the map.</div>}
+              {customers.length === 0 && <div className="empty">No customers yet. Tap <b>+ Add</b>, or mark a yard Interested or Booked on the map.</div>}
               {customers.map((c) => (
                 <div key={c.key} className="custcard">
                   <div className="custtop">
-                    <select className="statsel" value={c.outcome || "lead"} onChange={(e) => setStatus(c.key, e.target.value)}
-                      style={{ color: STAT[c.outcome || "lead"].color }}>
+                    <select className="statsel" value={c.outcome || "lead"} onChange={(e) => setStatus(c.key, e.target.value)} style={{ color: STAT[c.outcome || "lead"].color }}>
                       {CUST_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                     </select>
                     <button className="del" onClick={() => removeCustomer(c.key)}>Remove</button>
@@ -374,7 +313,7 @@ export default function App() {
                     <input type="number" placeholder="Price $" value={c.price || ""} onChange={(e) => updateCustomer(c.key, "price", e.target.value)} />
                   </div>
                   <textarea placeholder="Notes" rows={2} value={c.notes || ""} onChange={(e) => updateCustomer(c.key, "notes", e.target.value)} />
-                  {c.center && <button className="link" onClick={() => { setTab("map"); flyTo(c.center); }}>Show on map</button>}
+                  {c.center && <button className="link" onClick={() => { setTab("map"); flyTo(c.center); }}>Show on map →</button>}
                 </div>
               ))}
             </div>
@@ -383,23 +322,27 @@ export default function App() {
 
         {tab === "stats" && (
           <section className="panel padded">
-            <h4>In current view</h4>
-            <div className="cards">
-              <div className="card"><b>{stats.tiers.green.toLocaleString()}</b><span>Room</span></div>
-              <div className="card"><b>{stats.tiers.yellow.toLocaleString()}</b><span>Tight</span></div>
-              <div className="card"><b>{stats.tiers.red.toLocaleString()}</b><span>No room</span></div>
+            <div className="phd">In current view</div>
+            <div className="readouts">
+              <div className="ro"><b style={{ color: TIER.green.color }}>{stats.tiers.green}</b><span>Room</span></div>
+              <div className="ro"><b style={{ color: TIER.yellow.color }}>{stats.tiers.yellow}</b><span>Tight</span></div>
+              <div className="ro"><b style={{ color: TIER.red.color }}>{stats.tiers.red}</b><span>No room</span></div>
             </div>
-            <h4>Knock results (all)</h4>
-            {OUTCOMES.map((o) => (
-              <div className="statrow" key={o.key}>
-                <span className="dot" style={{ background: o.color }} />{o.label}
-                <b>{stats.tally[o.key] || 0}</b>
-              </div>
-            ))}
-            <p className="note">
-              Verdicts use lot size and open space from county records. The deeper
-              back-it-in vs. crane-it-in access scoring comes from the building-footprint pass.
-            </p>
+            <div className="phd">Knocks logged</div>
+            <div className="bars">
+              {OUTCOMES.map((o) => {
+                const v = stats.tally[o.key] || 0;
+                const max = Math.max(1, ...OUTCOMES.map((x) => stats.tally[x.key] || 0));
+                return (
+                  <div className="bar" key={o.key}>
+                    <span className="blab">{o.label}</span>
+                    <span className="track"><span className="fill" style={{ width: `${(v / max) * 100}%`, background: o.color }} /></span>
+                    <span className="bnum">{v}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="note">Verdicts use lot size and open space from county records. The deeper back-it-in vs. crane access scoring comes from the building-footprint pass.</p>
           </section>
         )}
       </div>
@@ -407,7 +350,7 @@ export default function App() {
       <nav className="bottomnav">
         {TABS.map((t) => (
           <button key={t.key} className={tab === t.key ? "on" : ""} onClick={() => setTab(t.key)}>
-            <span className="navicon">{t.icon}</span>{t.label}
+            <Icon name={t.key} />{t.label}
             {t.key === "customers" && customers.length > 0 && <span className="navbadge">{customers.length}</span>}
           </button>
         ))}
