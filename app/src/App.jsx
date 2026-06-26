@@ -10,8 +10,9 @@ const PARCELS_URL =
 const SQFT_PER_ACRE = 43560;
 const UNIT_FT2 = 14 * 66;
 const BACKYARD_FRAC = 0.5;
-const MIN_ZOOM = 16;       // a phone viewport at 16 stays under the 2000-parcel fetch cap = full coverage
-const FETCH_CAP = 2000;
+const MIN_ZOOM = 15;       // below this a viewport holds more parcels than the page budget can fully cover
+const PAGE = 2000;         // ArcGIS per-request cap; we paginate to cover the whole viewport
+const MAX_PAGES = 4;       // up to 8000 parcels per view before we ask the user to zoom in
 
 const TIER = {
   green:  { color: "#1fa36b", label: "Room to place" },
@@ -111,7 +112,6 @@ export default function App() {
       },
     }).addTo(map);
     layerRef.current = layer;
-    setCapped(rawFeatures.length >= FETCH_CAP);
     setFeatures(rawFeatures.map((f) => f.properties));
   }, []);
 
@@ -125,20 +125,33 @@ export default function App() {
     }
     setZoomedOut(false);
     const b = map.getBounds();
-    const params = new URLSearchParams({
+    const base = {
       where: "PROP_CLASS='Residential'",
       geometry: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(","),
       geometryType: "esriGeometryEnvelope", inSR: "4326",
       spatialRel: "esriSpatialRelIntersects",
       outFields: "PARCEL_ID,PARCEL_ADD,PARCEL_CITY,PARCEL_ACRES,BLDG_SQFT,PRIMARY_RES",
-      returnGeometry: "true", outSR: "4326", f: "geojson", resultRecordCount: "2000",
-    });
+      returnGeometry: "true", outSR: "4326", f: "geojson", resultRecordCount: String(PAGE),
+    };
     const token = ++reqToken.current;
     setLoading(true);
-    fetch(`${PARCELS_URL}?${params}`)
-      .then((r) => r.json())
-      .then((fc) => { if (token !== reqToken.current) return; renderParcels(fc.features || []); setLoading(false); })
-      .catch(() => { if (token === reqToken.current) setLoading(false); });
+    (async () => {
+      let offset = 0, all = [], more = true, pages = 0;
+      while (more && pages < MAX_PAGES) {
+        const params = new URLSearchParams({ ...base, resultOffset: String(offset) });
+        let fc;
+        try { fc = await fetch(`${PARCELS_URL}?${params}`).then((r) => r.json()); }
+        catch { if (token === reqToken.current) setLoading(false); return; }
+        if (token !== reqToken.current) return; // a newer move superseded this load
+        const batch = fc.features || [];
+        all = all.concat(batch);
+        more = batch.length >= PAGE;   // a full page back means there are probably more (geojson omits exceededTransferLimit)
+        offset += PAGE; pages++;
+      }
+      renderParcels(all);
+      setCapped(more);   // still more beyond our page budget -> suggest zooming in
+      setLoading(false);
+    })();
   }, [renderParcels]);
 
   useEffect(() => {
