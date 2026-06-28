@@ -8,11 +8,16 @@ const PARCELS_URL =
 
 // unit + scoring (open-space from parcel attributes; access/crane is the footprint pass)
 const SQFT_PER_ACRE = 43560;
-const UNIT_FT2 = 14 * 66;
 const BACKYARD_FRAC = 0.5;
 const MIN_ZOOM = 15;       // below this a viewport holds more parcels than the page budget can fully cover
 const PAGE = 2000;         // ArcGIS per-request cap; we paginate to cover the whole viewport
 const MAX_PAGES = 4;       // up to 8000 parcels per view before we ask the user to zoom in
+const RENTAL_COLOR = "#64748b";
+const SET_KEY = "yardscout.settings.v1";
+const DEFAULT_SETTINGS = { unitW: 14, unitL: 66, highlightRentals: true };
+// Best free signal: a parcel NOT claiming Utah's primary-residence exemption (second home / short-term
+// rental / vacant). True owner-address rental detection needs the assessor's owner data (backend phase).
+const isRental = (p) => p.PRIMARY_RES === "N";
 
 const TIER = {
   green:  { color: "#1fa36b", label: "Room to place" },
@@ -42,19 +47,22 @@ const METHODS = [
 ];
 const LS_KEY = "yardscout.knocks.v2";
 
-function scoreOf(props) {
+function scoreOf(props, s) {
   const lot = (props.PARCEL_ACRES || 0) * SQFT_PER_ACRE;
   const open = Math.max(0, lot - (props.BLDG_SQFT || 0));
   const yard = open * BACKYARD_FRAC;
-  if (yard < UNIT_FT2) return "red";
-  if (yard < UNIT_FT2 * 1.6) return "yellow";
+  const unit = (s.unitW || 14) * (s.unitL || 66);
+  if (yard < unit) return "red";
+  if (yard < unit * 1.6) return "yellow";
   return "green";
 }
 
-const styleFor = (feat, knocks) => {
+const styleFor = (feat, knocks, s) => {
   const k = knocks[feat.properties._key];
   if (k && k.outcome && STAT[k.outcome])
     return { color: "#fff", weight: k.outcome === "booked" ? 2.5 : 1.2, fillColor: STAT[k.outcome].color, fillOpacity: 0.92 };
+  if (s.highlightRentals && isRental(feat.properties))
+    return { color: RENTAL_COLOR, weight: 1.3, fillColor: RENTAL_COLOR, fillOpacity: 0.5 };
   const t = feat.properties._tier;
   return { color: TIER[t].color, weight: 1, fillColor: TIER[t].color, fillOpacity: 0.3 };
 };
@@ -65,6 +73,8 @@ const Icon = ({ name }) => {
     return <svg viewBox="0 0 24 24" width="22" height="22" {...p}><path d="M9 4 3.5 6.2v13.3L9 17.3l6 2.2 5.5-2.2V3.8L15 6 9 4Z" /><path d="M9 4v13.3M15 6v13.5" /></svg>;
   if (name === "customers")
     return <svg viewBox="0 0 24 24" width="22" height="22" {...p}><circle cx="9" cy="8" r="3.2" /><path d="M3.4 19c0-3.1 2.5-5.3 5.6-5.3s5.6 2.2 5.6 5.3" /><path d="M16.2 5.6a3 3 0 0 1 0 5.7M17 13.9c2.2.5 3.8 2.3 3.8 4.8" /></svg>;
+  if (name === "settings")
+    return <svg viewBox="0 0 24 24" width="22" height="22" {...p}><path d="M4 7h7M16 7h4M4 17h4M11 17h9" /><circle cx="14" cy="7" r="2.4" /><circle cx="8" cy="17" r="2.4" /></svg>;
   return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M5 20V11M12 20V5M19 20v-6" /></svg>;
 };
 
@@ -93,8 +103,35 @@ export default function App() {
   const [zoomedOut, setZoomedOut] = useState(false);
   const [capped, setCapped] = useState(false);
   const [expanded, setExpanded] = useState(() => new Set());
+  const [settings, setSettings] = useState(() => {
+    try { return { ...DEFAULT_SETTINGS, ...(JSON.parse(localStorage.getItem(SET_KEY)) || {}) }; } catch { return DEFAULT_SETTINGS; }
+  });
+  const settingsRef = useRef(settings);
 
   useEffect(() => { knocksRef.current = knocks; localStorage.setItem(LS_KEY, JSON.stringify(knocks)); }, [knocks]);
+
+  // re-score + restyle loaded parcels when settings change (no refetch needed)
+  useEffect(() => {
+    settingsRef.current = settings;
+    localStorage.setItem(SET_KEY, JSON.stringify(settings));
+    const layer = layerRef.current;
+    if (layer) {
+      layer.eachLayer((lyr) => {
+        lyr.feature.properties._tier = scoreOf(lyr.feature.properties, settings);
+        lyr.setStyle(styleFor(lyr.feature, knocksRef.current, settings));
+      });
+      setFeatures((fs) => fs.slice());
+    }
+  }, [settings]);
+
+  const setSetting = (k, v) => setSettings((s) => ({ ...s, [k]: v }));
+  const resetSettings = () => setSettings(DEFAULT_SETTINGS);
+  const clearData = () => {
+    if (!window.confirm("Clear all customers and knocks? This can't be undone.")) return;
+    setKnocks({}); knocksRef.current = {};
+    const layer = layerRef.current;
+    if (layer) layer.eachLayer((lyr) => lyr.setStyle(styleFor(lyr.feature, {}, settingsRef.current)));
+  };
 
   const renderParcels = useCallback((rawFeatures) => {
     const map = mapRef.current;
@@ -103,10 +140,10 @@ export default function App() {
     rawFeatures.forEach((f) => {
       const p = f.properties;
       p._key = String(p.PARCEL_ID || p.OBJECTID);
-      p._tier = scoreOf(p);
+      p._tier = scoreOf(p, settingsRef.current);
     });
     const layer = L.geoJSON({ type: "FeatureCollection", features: rawFeatures }, {
-      style: (f) => styleFor(f, knocksRef.current),
+      style: (f) => styleFor(f, knocksRef.current, settingsRef.current),
       onEachFeature: (f, lyr) => {
         idToLayer.current[f.properties._key] = lyr;
         lyr.on("click", () => setSelected(f.properties._key));
@@ -182,7 +219,7 @@ export default function App() {
       }
       knocksRef.current = next;
       const lyr = idToLayer.current[key];
-      if (lyr) lyr.setStyle(styleFor(lyr.feature, next));
+      if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
       return next;
     });
   };
@@ -194,7 +231,7 @@ export default function App() {
     setKnocks((prev) => {
       const next = { ...prev, [key]: { ...(prev[key] || {}), outcome: value } };
       knocksRef.current = next;
-      const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next));
+      const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
       return next;
     });
 
@@ -206,7 +243,7 @@ export default function App() {
 
   const removeCustomer = (key) =>
     setKnocks((prev) => { const next = { ...prev }; delete next[key]; knocksRef.current = next;
-      const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next)); return next; });
+      const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current)); return next; });
 
   const toggleExpand = (key) =>
     setExpanded((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -245,6 +282,7 @@ export default function App() {
     { key: "map", label: "Map" },
     { key: "customers", label: "Customers" },
     { key: "stats", label: "Stats" },
+    { key: "settings", label: "Settings" },
   ];
 
   return (
@@ -271,6 +309,7 @@ export default function App() {
             <span><i style={{ background: TIER.green.color }} />Room</span>
             <span><i style={{ background: TIER.yellow.color }} />Tight</span>
             <span><i style={{ background: TIER.red.color }} />No room</span>
+            {settings.highlightRentals && <span><i style={{ background: RENTAL_COLOR }} />Rental</span>}
           </div>
           {sel && (
             <div className="detail">
@@ -382,6 +421,33 @@ export default function App() {
               })}
             </div>
             <p className="note">Verdicts use lot size and open space from county records. The deeper back-it-in vs. crane access scoring comes from the building-footprint pass.</p>
+            </div>
+          </section>
+        )}
+
+        {tab === "settings" && (
+          <section className="panel padded">
+            <div className="swrap">
+              <div className="phd">Trailer size</div>
+              <div className="setrow">
+                <label>Width (ft)<input type="number" min="1" value={settings.unitW} onChange={(e) => setSetting("unitW", Number(e.target.value) || 0)} /></label>
+                <label>Length (ft)<input type="number" min="1" value={settings.unitL} onChange={(e) => setSetting("unitL", Number(e.target.value) || 0)} /></label>
+              </div>
+              <p className="snote">Footprint {(settings.unitW * settings.unitL).toLocaleString()} sqft. A bigger unit raises the bar, so fewer yards score green.</p>
+
+              <div className="phd">Map</div>
+              <label className="toggle">
+                <span className="tlabel"><b>Highlight rentals</b><small>Shade non-primary homes (second homes, short-term rentals, vacant) so the crew can skip them.</small></span>
+                <input type="checkbox" checked={settings.highlightRentals} onChange={(e) => setSetting("highlightRentals", e.target.checked)} />
+                <span className="sw" />
+              </label>
+              <p className="snote">Heads up: a long-term rental with a tenant looks the same as an owner-occupied home in the free county data, so this only catches non-primary properties for now. Catching every absentee owner needs the assessor's owner-address data, which comes with the backend.</p>
+
+              <div className="phd">Data</div>
+              <div className="setbtns">
+                <button className="ghostbtn" onClick={resetSettings}>Reset settings to defaults</button>
+                <button className="dangerbtn" onClick={clearData}>Clear all customers &amp; knocks</button>
+              </div>
             </div>
           </section>
         )}
