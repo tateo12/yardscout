@@ -83,6 +83,8 @@
 .cdot { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; }
 .cname { font-size: 15px; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cphone { font-family: var(--mono); font-size: 13px; color: var(--muted); flex: 0 0 auto; }
+.cdate { font-family: var(--mono); font-size: 12px; color: var(--muted); flex: 0 0 auto; }
+.cbadge { font-size: 11px; font-weight: 700; color: #fff; padding: 3px 9px; border-radius: 20px; flex: 0 0 auto; white-space: nowrap; }
 .cardactions { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
 .savebtn { margin-left: auto; border: 0; background: var(--green); color: #fff; font-weight: 700; font-size: 14px; padding: 10px 22px; border-radius: 9px; cursor: pointer; font-family: inherit; }
 .savebtn:active { transform: scale(.97); }

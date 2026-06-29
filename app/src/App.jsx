@@ -464,9 +464,9 @@ export default function App() {
                 if (c.saved && !expanded.has(c.key)) {
                   return (
                     <button key={c.key} className="custrow" onClick={() => toggleExpand(c.key)}>
-                      <span className="cdot" style={{ background: status.color }} />
-                      <span className="cname">{c.name}</span>
-                      <span className="cphone">{c.phone}</span>
+                      <span className="cname">{c.name || "(no name)"}</span>
+                      {c.date && <span className="cdate">{c.date}</span>}
+                      <span className="cbadge" style={{ background: status.color }}>{status.label}</span>
                     </button>
                   );
                 }
