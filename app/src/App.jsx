@@ -14,7 +14,21 @@ const PAGE = 2000;         // ArcGIS per-request cap; we paginate to cover the w
 const MAX_PAGES = 4;       // up to 8000 parcels per view before we ask the user to zoom in
 const RENTAL_COLOR = "#64748b";
 const SET_KEY = "yardscout.settings.v1";
-const DEFAULT_SETTINGS = { unitW: 14, unitL: 66, highlightRentals: true };
+const DEFAULT_SETTINGS = { unitW: 14, unitL: 66, unitH: 13.5, greenMargin: 1.6, highlightRentals: true, mapStyle: "satellite", home: null };
+const PRESETS = [
+  { key: "single", label: "Single-wide", w: 14, l: 66, h: 13.5 },
+  { key: "park", label: "Park model", w: 12, l: 35, h: 13.5 },
+  { key: "camper", label: "Camper", w: 8, l: 30, h: 10 },
+];
+const STRICTNESS = [
+  { key: 1.2, label: "Tight" },
+  { key: 1.6, label: "Standard" },
+  { key: 2.2, label: "Roomy" },
+];
+const TILES = {
+  satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  streets: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+};
 // Best free signal: a parcel NOT claiming Utah's primary-residence exemption (second home / short-term
 // rental / vacant). True owner-address rental detection needs the assessor's owner data (backend phase).
 const isRental = (p) => p.PRIMARY_RES === "N";
@@ -53,7 +67,7 @@ function scoreOf(props, s) {
   const yard = open * BACKYARD_FRAC;
   const unit = (s.unitW || 14) * (s.unitL || 66);
   if (yard < unit) return "red";
-  if (yard < unit * 1.6) return "yellow";
+  if (yard < unit * (s.greenMargin || 1.6)) return "yellow";
   return "green";
 }
 
@@ -87,6 +101,7 @@ const Logo = () => (
 
 export default function App() {
   const mapRef = useRef(null);
+  const baseLayerRef = useRef(null);
   const layerRef = useRef(null);
   const idToLayer = useRef({});
   const knocksRef = useRef({});
@@ -126,6 +141,11 @@ export default function App() {
 
   const setSetting = (k, v) => setSettings((s) => ({ ...s, [k]: v }));
   const resetSettings = () => setSettings(DEFAULT_SETTINGS);
+  const setHome = () => {
+    const m = mapRef.current; if (!m) return;
+    const c = m.getCenter();
+    setSetting("home", { lat: c.lat, lng: c.lng, zoom: m.getZoom() });
+  };
   const clearData = () => {
     if (!window.confirm("Clear all customers and knocks? This can't be undone.")) return;
     setKnocks({}); knocksRef.current = {};
@@ -193,9 +213,10 @@ export default function App() {
   }, [renderParcels]);
 
   useEffect(() => {
-    const map = L.map("map", { preferCanvas: true, zoomControl: true, attributionControl: false }).setView([40.6655, -111.9925], 16);
+    const home = settingsRef.current.home || { lat: 40.6655, lng: -111.9925, zoom: 16 };
+    const map = L.map("map", { preferCanvas: true, zoomControl: true, attributionControl: false }).setView([home.lat, home.lng], home.zoom);
     mapRef.current = map;
-    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 20 }).addTo(map);
+    baseLayerRef.current = L.tileLayer(TILES[settingsRef.current.mapStyle] || TILES.satellite, { maxZoom: 20 }).addTo(map);
     let t;
     const debounced = () => { clearTimeout(t); t = setTimeout(loadViewport, 400); };
     map.on("moveend", debounced);
@@ -204,6 +225,13 @@ export default function App() {
   }, [loadViewport]);
 
   useEffect(() => { if (tab === "map") setTimeout(() => mapRef.current?.invalidateSize(), 0); }, [tab]);
+
+  // swap satellite/streets basemap (tilePane sits below the parcel canvas, so parcels stay on top)
+  useEffect(() => {
+    const map = mapRef.current; if (!map) return;
+    if (baseLayerRef.current) map.removeLayer(baseLayerRef.current);
+    baseLayerRef.current = L.tileLayer(TILES[settings.mapStyle] || TILES.satellite, { maxZoom: 20 }).addTo(map);
+  }, [settings.mapStyle]);
 
   const flyTo = (center, zoom = 18) => mapRef.current?.flyTo(center, zoom, { duration: 0.6 });
 
@@ -428,20 +456,59 @@ export default function App() {
         {tab === "settings" && (
           <section className="panel padded">
             <div className="swrap">
-              <div className="phd">Trailer size</div>
+              <div className="phd">Trailer</div>
+              <div className="presets">
+                {PRESETS.map((pr) => {
+                  const on = settings.unitW === pr.w && settings.unitL === pr.l;
+                  return (
+                    <button key={pr.key} className={"preset" + (on ? " on" : "")}
+                      onClick={() => setSettings((s) => ({ ...s, unitW: pr.w, unitL: pr.l, unitH: pr.h }))}>
+                      <b>{pr.label}</b><span>{pr.w} × {pr.l} ft</span>
+                    </button>
+                  );
+                })}
+              </div>
               <div className="setrow">
                 <label>Width (ft)<input type="number" min="1" value={settings.unitW} onChange={(e) => setSetting("unitW", Number(e.target.value) || 0)} /></label>
                 <label>Length (ft)<input type="number" min="1" value={settings.unitL} onChange={(e) => setSetting("unitL", Number(e.target.value) || 0)} /></label>
+                <label>Height (ft)<input type="number" min="1" value={settings.unitH} onChange={(e) => setSetting("unitH", Number(e.target.value) || 0)} /></label>
               </div>
+              <div className="preview">{(() => {
+                const lotW = 62, lotL = 108, sc = 2.3;
+                const W = lotW * sc, H = lotL * sc;
+                const tw = Math.min(settings.unitW, lotW) * sc, tl = Math.min(settings.unitL, lotL) * sc;
+                const fits = settings.unitW <= lotW && settings.unitL <= lotL;
+                return (
+                  <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="previewsvg">
+                    <rect x="1" y="1" width={W - 2} height={H - 2} rx="7" fill="#eef1f0" stroke="#cdd5d1" strokeDasharray="5 4" />
+                    <text x={W / 2} y="15" textAnchor="middle" className="pvlabel">≈ 0.15-acre lot</text>
+                    <rect x={(W - tw) / 2} y={H - tl - 12} width={tw} height={tl} rx="3" fill={fits ? "#1fa36b" : "#dd5145"} opacity="0.9" />
+                    <text x={W / 2} y={H - tl / 2 - 9} textAnchor="middle" className="pvunit">{settings.unitW}×{settings.unitL}</text>
+                  </svg>
+                );
+              })()}</div>
               <p className="snote">Footprint {(settings.unitW * settings.unitL).toLocaleString()} sqft. A bigger unit raises the bar, so fewer yards score green.</p>
 
+              <div className="phd">Scoring</div>
+              <div className="seg3">
+                {STRICTNESS.map((o) => (
+                  <button key={o.key} className={settings.greenMargin === o.key ? "on" : ""} onClick={() => setSetting("greenMargin", o.key)}>{o.label}</button>
+                ))}
+              </div>
+              <p className="snote">How much room beyond the trailer a yard needs before it counts as green.</p>
+
               <div className="phd">Map</div>
+              <div className="seg3">
+                <button className={settings.mapStyle === "satellite" ? "on" : ""} onClick={() => setSetting("mapStyle", "satellite")}>Satellite</button>
+                <button className={settings.mapStyle === "streets" ? "on" : ""} onClick={() => setSetting("mapStyle", "streets")}>Streets</button>
+              </div>
               <label className="toggle">
                 <span className="tlabel"><b>Highlight rentals</b><small>Shade non-primary homes (second homes, short-term rentals, vacant) so the crew can skip them.</small></span>
                 <input type="checkbox" checked={settings.highlightRentals} onChange={(e) => setSetting("highlightRentals", e.target.checked)} />
                 <span className="sw" />
               </label>
-              <p className="snote">Heads up: a long-term rental with a tenant looks the same as an owner-occupied home in the free county data, so this only catches non-primary properties for now. Catching every absentee owner needs the assessor's owner-address data, which comes with the backend.</p>
+              <button className="ghostbtn full" onClick={setHome}>Set current map view as “home”</button>
+              <p className="snote">Heads up: a long-term rental with a tenant looks the same as owner-occupied in the free county data, so the rental shading only catches non-primary properties for now. Full absentee-owner detection comes with the backend.</p>
 
               <div className="phd">Data</div>
               <div className="setbtns">
