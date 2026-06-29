@@ -68,10 +68,18 @@ const LS_KEY = "yardscout.knocks.v2";
 function scoreOf(props, s) {
   const lot = (props.PARCEL_ACRES || 0) * SQFT_PER_ACRE;
   const open = Math.max(0, lot - (props.BLDG_SQFT || 0));
-  const yard = open * BACKYARD_FRAC;
-  const unit = (s.unitW || 14) * (s.unitL || 66);
-  if (yard < unit) return "red";
-  if (yard < unit * (s.greenMargin || 1.6)) return "yellow";
+  const yard = open * BACKYARD_FRAC;          // sq ft of usable back yard
+  const uw = s.unitW || 14, ul = s.unitL || 66;
+  const unit = uw * ul;                       // home footprint sq ft
+  const margin = s.greenMargin || 1.6;
+  // Dimensional check: the parcel data only gives areas, not yard shape, so we
+  // estimate the buildable yard as a square and require the home's LONG side to
+  // physically span it. This is why a long single-wide is harder to place than
+  // its raw area implies (a yard can have enough sq ft yet be too short).
+  const yardSpan = Math.sqrt(yard);           // est. yard dimension (ft)
+  const homeLong = Math.max(uw, ul);
+  if (yard < unit || yardSpan < homeLong) return "red";
+  if (yard < unit * margin || yardSpan < homeLong * Math.sqrt(margin)) return "yellow";
   return "green";
 }
 
@@ -88,7 +96,7 @@ const styleFor = (feat, s) => {
 // icon so the clickable area always matches what you see; icons regenerate on zoom instead of CSS-scaling.
 const FLAG_PATHS =
   '<path d="M5.5 33V2.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M6.5 3.2h13.5l-3.4 4.6 3.4 4.6H6.5Z" fill="currentColor" stroke="#fff" stroke-width="1"/>';
-const sizeForZoom = (z) => Math.round(Math.min(58, Math.max(18, 26 * Math.pow(1.32, z - 18))));
+const sizeForZoom = (z) => Math.round(Math.min(70, Math.max(22, 32 * Math.pow(1.32, z - 18))));
 const flagIcon = (color, h) => {
   const w = (h * 25) / 33;
   return L.divIcon({
