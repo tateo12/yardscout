@@ -60,7 +60,7 @@
 .arbox { margin-top: 14px; }
 .arbtn { width: 100%; border: 0; background: var(--graphite); color: #fff; font-weight: 700; font-size: 13px; padding: 12px; border-radius: 10px; cursor: pointer; font-family: inherit; }
 .arnote { font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 7px; }
-.ar-launch { border: 0; background: var(--green); color: #fff; font-weight: 700; font-size: 13px; padding: 9px 18px; border-radius: 20px; cursor: pointer; font-family: inherit; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.arbtn.launch { background: var(--green); margin-top: 8px; }
 
 /* ---- customers ---- */
 .custhd { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--card); border-bottom: 1px solid var(--line); }

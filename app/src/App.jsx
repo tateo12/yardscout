@@ -89,9 +89,8 @@ const styleFor = (feat, knocks, s) => {
   return { color: c, weight: 1, fillColor: c, fillOpacity: 0.3 };
 };
 
-// flag marker (Option D): pole-left flag, recolored via currentColor. Size is baked into the icon so the
-// clickable area always matches what you see; we regenerate the icons on zoom instead of CSS-scaling.
-const PIN_ZOOM = 17;            // flags fade in at street zoom; wider views stay polygon-only for speed
+// flag marker (Option D): pole-left flag for CUSTOMERS, recolored via currentColor. Size is baked into the
+// icon so the clickable area always matches what you see; icons regenerate on zoom instead of CSS-scaling.
 const FLAG_PATHS =
   '<path d="M5.5 33V2.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M6.5 3.2h13.5l-3.4 4.6 3.4 4.6H6.5Z" fill="currentColor" stroke="#fff" stroke-width="1"/>';
 const sizeForZoom = (z) => Math.round(Math.min(58, Math.max(18, 26 * Math.pow(1.32, z - 18))));
@@ -132,6 +131,7 @@ export default function App() {
   const knocksRef = useRef({});
   const reqToken = useRef(0);
   const meMarker = useRef(null);
+  const mvRef = useRef(null);
 
   const [features, setFeatures] = useState([]);
   const [knocks, setKnocks] = useState(() => {
@@ -159,8 +159,6 @@ export default function App() {
       layer.eachLayer((lyr) => {
         lyr.feature.properties._tier = scoreOf(lyr.feature.properties, settings);
         lyr.setStyle(styleFor(lyr.feature, knocksRef.current, settings));
-        const mk = markerByKey.current[lyr.feature.properties._key];
-        if (mk) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, knocksRef.current, settings), sizeForZoom(mapRef.current.getZoom())));
       });
       setFeatures((fs) => fs.slice());
     }
@@ -198,25 +196,48 @@ export default function App() {
     }).addTo(map);
     layerRef.current = layer;
 
-    // flag markers, only at street zoom (keeps wide views fast)
-    if (markersRef.current) { map.removeLayer(markersRef.current); markersRef.current = null; }
+    // flags mark CUSTOMERS only — a pin drops when a house is marked interested/booked
+    if (!markersRef.current) markersRef.current = L.layerGroup().addTo(map);
+    markersRef.current.clearLayers();
     markerByKey.current = {};
-    if (map.getZoom() >= PIN_ZOOM) {
-      const grp = L.layerGroup();
-      rawFeatures.forEach((f) => {
-        const p = f.properties;
-        const poly = idToLayer.current[p._key];
-        if (!poly) return;
-        const m = L.marker(poly.getBounds().getCenter(), { icon: flagIcon(colorFor(p, knocksRef.current, settingsRef.current), sizeForZoom(map.getZoom())) });
-        m.on("click", () => setSelected(p._key));
-        markerByKey.current[p._key] = m;
-        grp.addLayer(m);
-      });
-      grp.addTo(map);
-      markersRef.current = grp;
-    }
+    const h = sizeForZoom(map.getZoom());
+    rawFeatures.forEach((f) => {
+      const p = f.properties;
+      const k = knocksRef.current[p._key];
+      if (!(k && CUSTOMER_OUTCOMES.includes(k.outcome))) return;
+      const poly = idToLayer.current[p._key];
+      if (!poly) return;
+      const m = L.marker(poly.getBounds().getCenter(), { icon: flagIcon(STAT[k.outcome].color, h) });
+      m.on("click", () => setSelected(p._key));
+      markerByKey.current[p._key] = m;
+      markersRef.current.addLayer(m);
+    });
     setFeatures(rawFeatures.map((f) => f.properties));
   }, []);
+
+  // add/update/remove a customer's flag pin live
+  const updateFlag = (key, knocks) => {
+    const map = mapRef.current, group = markersRef.current;
+    if (!map || !group) return;
+    const k = knocks[key];
+    const isCust = !!(k && CUSTOMER_OUTCOMES.includes(k.outcome));
+    const existing = markerByKey.current[key];
+    if (isCust) {
+      const poly = idToLayer.current[key];
+      if (!poly) return;
+      const icon = flagIcon(STAT[k.outcome].color, sizeForZoom(map.getZoom()));
+      if (existing) existing.setIcon(icon);
+      else {
+        const m = L.marker(poly.getBounds().getCenter(), { icon });
+        m.on("click", () => setSelected(key));
+        markerByKey.current[key] = m;
+        group.addLayer(m);
+      }
+    } else if (existing) {
+      group.removeLayer(existing);
+      delete markerByKey.current[key];
+    }
+  };
 
   const loadViewport = useCallback(() => {
     const map = mapRef.current;
@@ -263,11 +284,10 @@ export default function App() {
     mapRef.current = map;
     baseLayerRef.current = L.tileLayer(TILES[settingsRef.current.mapStyle] || TILES.satellite, { maxZoom: 20 }).addTo(map);
     const resizeFlags = () => {
-      const z = map.getZoom(); if (z < PIN_ZOOM) return;
-      const h = sizeForZoom(z);
+      const h = sizeForZoom(map.getZoom());
       Object.entries(markerByKey.current).forEach(([key, mk]) => {
-        const poly = idToLayer.current[key];
-        if (poly) mk.setIcon(flagIcon(colorFor(poly.feature.properties, knocksRef.current, settingsRef.current), h));
+        const k = knocksRef.current[key];
+        if (k && STAT[k.outcome]) mk.setIcon(flagIcon(STAT[k.outcome].color, h));
       });
     };
     map.on("zoomend", resizeFlags);
@@ -275,7 +295,7 @@ export default function App() {
     const debounced = () => { clearTimeout(t); t = setTimeout(loadViewport, 400); };
     map.on("moveend", debounced);
     loadViewport();
-    return () => { clearTimeout(t); map.remove(); mapRef.current = null; layerRef.current = null; idToLayer.current = {}; };
+    return () => { clearTimeout(t); map.remove(); mapRef.current = null; layerRef.current = null; markersRef.current = null; idToLayer.current = {}; };
   }, [loadViewport]);
 
   useEffect(() => { if (tab === "map") setTimeout(() => mapRef.current?.invalidateSize(), 0); }, [tab]);
@@ -302,7 +322,7 @@ export default function App() {
       knocksRef.current = next;
       const lyr = idToLayer.current[key];
       if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
-      { const mk = markerByKey.current[key]; if (mk && lyr) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, next, settingsRef.current), sizeForZoom(mapRef.current.getZoom()))); }
+      updateFlag(key, next);
       return next;
     });
   };
@@ -315,7 +335,7 @@ export default function App() {
       const next = { ...prev, [key]: { ...(prev[key] || {}), outcome: value } };
       knocksRef.current = next;
       const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
-      { const mk = markerByKey.current[key]; if (mk && lyr) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, next, settingsRef.current), sizeForZoom(mapRef.current.getZoom()))); }
+      updateFlag(key, next);
       return next;
     });
 
@@ -328,7 +348,7 @@ export default function App() {
   const removeCustomer = (key) =>
     setKnocks((prev) => { const next = { ...prev }; delete next[key]; knocksRef.current = next;
       const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
-      { const mk = markerByKey.current[key]; if (mk && lyr) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, next, settingsRef.current), sizeForZoom(mapRef.current.getZoom()))); } return next; });
+      updateFlag(key, next); return next; });
 
   const toggleExpand = (key) =>
     setExpanded((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -434,15 +454,17 @@ export default function App() {
                 {!arReady ? (
                   <button className="arbtn" onClick={openAR}>See the trailer in this yard</button>
                 ) : (
-                  <model-viewer
-                    src={`${import.meta.env.BASE_URL}models/${modelName}.glb`}
-                    ios-src={`${import.meta.env.BASE_URL}models/${modelName}.usdz`}
-                    {...{ ar: "", "ar-modes": "webxr scene-viewer quick-look", "ar-scale": "fixed", "camera-controls": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95" }}
-                    style={{ width: "100%", height: "180px", background: "#eef1f0", borderRadius: "10px" }}>
-                    <button slot="ar-button" className="ar-launch">View in your yard</button>
-                  </model-viewer>
+                  <>
+                    <model-viewer ref={mvRef}
+                      src={`${import.meta.env.BASE_URL}models/${modelName}.glb`}
+                      ios-src={`${import.meta.env.BASE_URL}models/${modelName}.usdz`}
+                      {...{ ar: "", "ar-modes": "webxr scene-viewer quick-look", "ar-scale": "fixed", "camera-controls": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95" }}
+                      style={{ width: "100%", height: "180px", background: "#eef1f0", borderRadius: "10px" }}>
+                    </model-viewer>
+                    <button className="arbtn launch" onClick={() => mvRef.current?.activateAR?.()}>View in your yard (camera)</button>
+                  </>
                 )}
-                <div className="arnote">Real-scale {settings.unitW}×{settings.unitL} ft unit. Stand in the backyard and walk around it to eyeball the fit.</div>
+                <div className="arnote">Real-scale {settings.unitW}×{settings.unitL} ft unit. On a phone, “View in your yard” opens the camera to drop it in the backyard at true size and walk around it.</div>
               </div>
             </div>
           )}
