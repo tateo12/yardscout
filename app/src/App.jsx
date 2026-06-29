@@ -546,7 +546,7 @@ export default function App() {
                   <>
                     {arReady ? (
                       <model-viewer src={glb}
-                        {...{ "camera-controls": "", "auto-rotate": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95", "interaction-prompt": "none" }}
+                        {...{ "camera-controls": "", "auto-rotate": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95", "interaction-prompt": "none", "camera-orbit": "-55deg 75deg auto", "min-camera-orbit": "auto 0deg auto", "max-camera-orbit": "auto 90deg auto" }}
                         style={{ width: "100%", height: "330px", background: "#eef1f0", borderRadius: "14px" }}>
                       </model-viewer>
                     ) : (
@@ -557,6 +557,22 @@ export default function App() {
                       <div><b>{settings.unitL}</b><span>length ft</span></div>
                       <div><b>{settings.unitH}</b><span>height ft</span></div>
                     </div>
+                    <div className="presets" style={{ marginTop: "12px" }}>
+                      {PRESETS.map((pr) => {
+                        const on = settings.unitW === pr.w && settings.unitL === pr.l;
+                        return (
+                          <button key={pr.key} className={"preset" + (on ? " on" : "")}
+                            onClick={() => setSettings((s) => ({ ...s, unitW: pr.w, unitL: pr.l, unitH: pr.h }))}>
+                            <b>{pr.label}</b><span>{pr.w} × {pr.l} ft</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="setrow" style={{ marginTop: "10px" }}>
+                      <label>Width (ft)<input type="number" min="1" value={settings.unitW} onChange={(e) => setSetting("unitW", Number(e.target.value) || 0)} /></label>
+                      <label>Length (ft)<input type="number" min="1" value={settings.unitL} onChange={(e) => setSetting("unitL", Number(e.target.value) || 0)} /></label>
+                      <label>Height (ft)<input type="number" min="1" value={settings.unitH} onChange={(e) => setSetting("unitH", Number(e.target.value) || 0)} /></label>
+                    </div>
                     {IS_IOS ? (
                       <a className="ar-anchor" style={{ marginTop: "14px" }} rel="ar" href={usdz}><img src={`${import.meta.env.BASE_URL}ar-poster.png`} alt="View in your yard" /></a>
                     ) : IS_ANDROID ? (
@@ -564,7 +580,7 @@ export default function App() {
                     ) : (
                       <div className="arnote">Spin the 3D model above on a computer. To place it in a real yard with the camera, open Yardscout on your phone — the camera view is phone-only.</div>
                     )}
-                    <p className="snote">Matches your {settings.unitW}×{settings.unitL} ft unit. Change the size under Settings.</p>
+                    <p className="snote">Matches your {settings.unitW}×{settings.unitL} ft unit. Pick a preset or set the size above.</p>
                   </>
                 );
               })()}
