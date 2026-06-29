@@ -89,13 +89,20 @@ const styleFor = (feat, knocks, s) => {
   return { color: c, weight: 1, fillColor: c, fillOpacity: 0.3 };
 };
 
-// flag marker (Option D): pole-left flag, recolored via currentColor, scaled by zoom via the --pz CSS var
+// flag marker (Option D): pole-left flag, recolored via currentColor. Size is baked into the icon so the
+// clickable area always matches what you see; we regenerate the icons on zoom instead of CSS-scaling.
 const PIN_ZOOM = 17;            // flags fade in at street zoom; wider views stay polygon-only for speed
-const FLAG_SVG =
-  '<svg width="22" height="29" viewBox="0 0 25 33"><path d="M5.5 33V2.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M6.5 3.2h13.5l-3.4 4.6 3.4 4.6H6.5Z" fill="currentColor" stroke="#fff" stroke-width="1"/></svg>';
-const pinScale = (z) => Math.min(2.0, Math.max(0.7, Math.pow(1.3, z - 18)));
-const flagIcon = (color) =>
-  L.divIcon({ className: "flag-wrap", html: `<div class="flag" style="color:${color}">${FLAG_SVG}</div>`, iconSize: [22, 29], iconAnchor: [4.8, 29] });
+const FLAG_PATHS =
+  '<path d="M5.5 33V2.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M6.5 3.2h13.5l-3.4 4.6 3.4 4.6H6.5Z" fill="currentColor" stroke="#fff" stroke-width="1"/>';
+const sizeForZoom = (z) => Math.round(Math.min(58, Math.max(18, 26 * Math.pow(1.32, z - 18))));
+const flagIcon = (color, h) => {
+  const w = (h * 25) / 33;
+  return L.divIcon({
+    className: "flag-wrap",
+    html: `<div class="flag" style="color:${color}"><svg width="${w}" height="${h}" viewBox="0 0 25 33">${FLAG_PATHS}</svg></div>`,
+    iconSize: [w, h], iconAnchor: [(w * 5.5) / 25, h],
+  });
+};
 
 const Icon = ({ name }) => {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
@@ -153,7 +160,7 @@ export default function App() {
         lyr.feature.properties._tier = scoreOf(lyr.feature.properties, settings);
         lyr.setStyle(styleFor(lyr.feature, knocksRef.current, settings));
         const mk = markerByKey.current[lyr.feature.properties._key];
-        if (mk) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, knocksRef.current, settings)));
+        if (mk) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, knocksRef.current, settings), sizeForZoom(mapRef.current.getZoom())));
       });
       setFeatures((fs) => fs.slice());
     }
@@ -200,7 +207,7 @@ export default function App() {
         const p = f.properties;
         const poly = idToLayer.current[p._key];
         if (!poly) return;
-        const m = L.marker(poly.getBounds().getCenter(), { icon: flagIcon(colorFor(p, knocksRef.current, settingsRef.current)) });
+        const m = L.marker(poly.getBounds().getCenter(), { icon: flagIcon(colorFor(p, knocksRef.current, settingsRef.current), sizeForZoom(map.getZoom())) });
         m.on("click", () => setSelected(p._key));
         markerByKey.current[p._key] = m;
         grp.addLayer(m);
@@ -255,9 +262,15 @@ export default function App() {
     const map = L.map("map", { preferCanvas: true, zoomControl: true, attributionControl: false }).setView([home.lat, home.lng], home.zoom);
     mapRef.current = map;
     baseLayerRef.current = L.tileLayer(TILES[settingsRef.current.mapStyle] || TILES.satellite, { maxZoom: 20 }).addTo(map);
-    const setPinScale = () => map.getContainer().style.setProperty("--pz", pinScale(map.getZoom()));
-    setPinScale();
-    map.on("zoomend", setPinScale);
+    const resizeFlags = () => {
+      const z = map.getZoom(); if (z < PIN_ZOOM) return;
+      const h = sizeForZoom(z);
+      Object.entries(markerByKey.current).forEach(([key, mk]) => {
+        const poly = idToLayer.current[key];
+        if (poly) mk.setIcon(flagIcon(colorFor(poly.feature.properties, knocksRef.current, settingsRef.current), h));
+      });
+    };
+    map.on("zoomend", resizeFlags);
     let t;
     const debounced = () => { clearTimeout(t); t = setTimeout(loadViewport, 400); };
     map.on("moveend", debounced);
@@ -289,7 +302,7 @@ export default function App() {
       knocksRef.current = next;
       const lyr = idToLayer.current[key];
       if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
-      { const mk = markerByKey.current[key]; if (mk && lyr) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, next, settingsRef.current))); }
+      { const mk = markerByKey.current[key]; if (mk && lyr) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, next, settingsRef.current), sizeForZoom(mapRef.current.getZoom()))); }
       return next;
     });
   };
@@ -302,7 +315,7 @@ export default function App() {
       const next = { ...prev, [key]: { ...(prev[key] || {}), outcome: value } };
       knocksRef.current = next;
       const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
-      { const mk = markerByKey.current[key]; if (mk && lyr) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, next, settingsRef.current))); }
+      { const mk = markerByKey.current[key]; if (mk && lyr) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, next, settingsRef.current), sizeForZoom(mapRef.current.getZoom()))); }
       return next;
     });
 
@@ -315,7 +328,7 @@ export default function App() {
   const removeCustomer = (key) =>
     setKnocks((prev) => { const next = { ...prev }; delete next[key]; knocksRef.current = next;
       const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
-      { const mk = markerByKey.current[key]; if (mk && lyr) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, next, settingsRef.current))); } return next; });
+      { const mk = markerByKey.current[key]; if (mk && lyr) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, next, settingsRef.current), sizeForZoom(mapRef.current.getZoom()))); } return next; });
 
   const toggleExpand = (key) =>
     setExpanded((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -349,6 +362,14 @@ export default function App() {
 
   const sel = selected != null ? features.find((p) => p._key === selected) : null;
   const selKnock = selected != null ? knocks[selected] : null;
+
+  // AR: lazy-load model-viewer on demand; pick the box model closest to the configured trailer size
+  const [arReady, setArReady] = useState(false);
+  const openAR = async () => { await import("@google/model-viewer"); setArReady(true); };
+  const modelName = useMemo(() => {
+    const a = settings.unitW * settings.unitL;
+    return PRESETS.reduce((b, pr) => (Math.abs(pr.w * pr.l - a) < Math.abs(b.w * b.l - a) ? pr : b)).key;
+  }, [settings.unitW, settings.unitL]);
 
   const TABS = [
     { key: "map", label: "Map" },
@@ -409,6 +430,20 @@ export default function App() {
                   <textarea placeholder="Notes" rows={2} value={selKnock.notes || ""} onChange={(e) => updateCustomer(sel._key, "notes", e.target.value)} />
                 </div>
               )}
+              <div className="arbox">
+                {!arReady ? (
+                  <button className="arbtn" onClick={openAR}>See the trailer in this yard</button>
+                ) : (
+                  <model-viewer
+                    src={`${import.meta.env.BASE_URL}models/${modelName}.glb`}
+                    ios-src={`${import.meta.env.BASE_URL}models/${modelName}.usdz`}
+                    {...{ ar: "", "ar-modes": "webxr scene-viewer quick-look", "ar-scale": "fixed", "camera-controls": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95" }}
+                    style={{ width: "100%", height: "180px", background: "#eef1f0", borderRadius: "10px" }}>
+                    <button slot="ar-button" className="ar-launch">View in your yard</button>
+                  </model-viewer>
+                )}
+                <div className="arnote">Real-scale {settings.unitW}×{settings.unitL} ft unit. Stand in the backyard and walk around it to eyeball the fit.</div>
+              </div>
             </div>
           )}
         </main>

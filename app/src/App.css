@@ -28,8 +28,7 @@
 
 /* ---- map overlays ---- */
 .flag-wrap { background: transparent; border: 0; }
-.flag-wrap .flag { transform-origin: 22% 100%; transform: scale(var(--pz, 1)); transition: transform .1s ease;
-  filter: drop-shadow(0 2px 2px rgba(0,0,0,.45)); }
+.flag-wrap .flag { line-height: 0; filter: drop-shadow(0 2px 2px rgba(0,0,0,.45)); }
 .leaflet-control-zoom { border: 0 !important; box-shadow: 0 1px 6px rgba(0,0,0,.3) !important; }
 .leaflet-control-zoom a { background: var(--graphite) !important; color: #fff !important; border: 0 !important; }
 .legend { position: absolute; left: 12px; bottom: 12px; z-index: 600; background: rgba(20,24,30,.9); backdrop-filter: blur(6px);
@@ -58,6 +57,10 @@
 .obtn { border: 1px solid var(--line); background: #fff; border-radius: 9px; padding: 8px 11px; font-size: 12px; font-weight: 600; cursor: pointer; color: #2b3140; font-family: inherit; }
 .obtn:active { transform: scale(.97); }
 .custfields { display: flex; flex-direction: column; gap: 8px; margin-top: 13px; }
+.arbox { margin-top: 14px; }
+.arbtn { width: 100%; border: 0; background: var(--graphite); color: #fff; font-weight: 700; font-size: 13px; padding: 12px; border-radius: 10px; cursor: pointer; font-family: inherit; }
+.arnote { font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 7px; }
+.ar-launch { border: 0; background: var(--green); color: #fff; font-weight: 700; font-size: 13px; padding: 9px 18px; border-radius: 20px; cursor: pointer; font-family: inherit; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
 
 /* ---- customers ---- */
 .custhd { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--card); border-bottom: 1px solid var(--line); }
