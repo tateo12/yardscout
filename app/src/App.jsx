@@ -33,6 +33,10 @@ const TILES = {
 // rental / vacant). True owner-address rental detection needs the assessor's owner data (backend phase).
 const isRental = (p) => p.PRIMARY_RES === "N";
 
+const UA = typeof navigator !== "undefined" ? navigator.userAgent : "";
+const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (typeof navigator !== "undefined" && navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const IS_ANDROID = /Android/.test(UA);
+
 const TIER = {
   green:  { color: "#1fa36b", label: "Room to place" },
   yellow: { color: "#f5a524", label: "Tight" },
@@ -437,20 +441,32 @@ export default function App() {
                   <textarea placeholder="Notes" rows={2} value={selKnock.notes || ""} onChange={(e) => updateCustomer(sel._key, "notes", e.target.value)} />
                 </div>
               )}
-              <div className="arbox">
-                {!arReady ? (
-                  <button className="arbtn" onClick={openAR}>See the trailer in this yard</button>
-                ) : (
-                  <model-viewer
-                    src={`${import.meta.env.BASE_URL}models/${modelName}.glb`}
-                    ios-src={`${import.meta.env.BASE_URL}models/${modelName}.usdz`}
-                    {...{ ar: "", "ar-modes": "webxr scene-viewer quick-look", "ar-scale": "fixed", "camera-controls": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95" }}
-                    style={{ width: "100%", height: "190px", background: "#eef1f0", borderRadius: "10px" }}>
-                    <button slot="ar-button" className="ar-launch">View in your yard</button>
-                  </model-viewer>
-                )}
-                <div className="arnote">Real-scale {settings.unitW}×{settings.unitL} ft unit. The green “View in your yard” button shows on a phone and opens the camera to place it in the backyard. AR needs a phone — it won’t appear on a computer.</div>
-              </div>
+              {(() => {
+                const glb = `${import.meta.env.BASE_URL}models/${modelName}.glb`;
+                const usdz = `${import.meta.env.BASE_URL}models/${modelName}.usdz`;
+                const glbAbs = new URL(glb, window.location.href).href;
+                const scene = `https://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(glbAbs)}&mode=ar_preferred`;
+                return (
+                  <div className="arbox">
+                    {IS_IOS ? (
+                      <a className="ar-anchor" rel="ar" href={usdz}><img src={`${import.meta.env.BASE_URL}ar-poster.png`} alt="View in your yard" /></a>
+                    ) : IS_ANDROID ? (
+                      <a className="ar-cta" href={scene}>View in your yard</a>
+                    ) : (
+                      <div className="arnote">Open Yardscout on your phone (iPhone or Android) to drop the real-scale trailer in the backyard with the camera.</div>
+                    )}
+                    {!arReady ? (
+                      <button className="arbtn ghost" onClick={openAR}>See a 3D preview</button>
+                    ) : (
+                      <model-viewer src={glb}
+                        {...{ "camera-controls": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95", "interaction-prompt": "none" }}
+                        style={{ width: "100%", height: "180px", background: "#eef1f0", borderRadius: "10px", marginTop: "8px" }}>
+                      </model-viewer>
+                    )}
+                    <div className="arnote">Real-scale {settings.unitW}×{settings.unitL} ft unit.</div>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </main>
