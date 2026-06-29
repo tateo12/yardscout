@@ -106,6 +106,8 @@ const Icon = ({ name }) => {
     return <svg viewBox="0 0 24 24" width="22" height="22" {...p}><circle cx="9" cy="8" r="3.2" /><path d="M3.4 19c0-3.1 2.5-5.3 5.6-5.3s5.6 2.2 5.6 5.3" /><path d="M16.2 5.6a3 3 0 0 1 0 5.7M17 13.9c2.2.5 3.8 2.3 3.8 4.8" /></svg>;
   if (name === "settings")
     return <svg viewBox="0 0 24 24" width="22" height="22" {...p}><path d="M4 7h7M16 7h4M4 17h4M11 17h9" /><circle cx="14" cy="7" r="2.4" /><circle cx="8" cy="17" r="2.4" /></svg>;
+  if (name === "trailer")
+    return <svg viewBox="0 0 24 24" width="22" height="22" {...p}><path d="M12 2.5 3.5 7v10L12 21.5 20.5 17V7Z" /><path d="M3.7 7 12 11.6 20.3 7M12 11.6V21.4" /></svg>;
   return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M5 20V11M12 20V5M19 20v-6" /></svg>;
 };
 
@@ -138,6 +140,7 @@ export default function App() {
   const [zoomedOut, setZoomedOut] = useState(false);
   const [capped, setCapped] = useState(false);
   const [expanded, setExpanded] = useState(() => new Set());
+  const [arReady, setArReady] = useState(false);
   const [settings, setSettings] = useState(() => {
     try { return { ...DEFAULT_SETTINGS, ...(JSON.parse(localStorage.getItem(SET_KEY)) || {}) }; } catch { return DEFAULT_SETTINGS; }
   });
@@ -295,6 +298,9 @@ export default function App() {
 
   useEffect(() => { if (tab === "map") setTimeout(() => mapRef.current?.invalidateSize(), 0); }, [tab]);
 
+  // lazy-load model-viewer the first time the Trailer tab opens
+  useEffect(() => { if (tab === "trailer" && !arReady) import("@google/model-viewer").then(() => setArReady(true)); }, [tab, arReady]);
+
   // swap satellite/streets basemap (tilePane sits below the parcel canvas, so parcels stay on top)
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
@@ -374,9 +380,7 @@ export default function App() {
   const sel = selected != null ? features.find((p) => p._key === selected) : null;
   const selKnock = selected != null ? knocks[selected] : null;
 
-  // AR: lazy-load model-viewer on demand; pick the box model closest to the configured trailer size
-  const [arReady, setArReady] = useState(false);
-  const openAR = async () => { await import("@google/model-viewer"); setArReady(true); };
+  // pick the box model closest to the configured trailer size
   const modelName = useMemo(() => {
     const a = settings.unitW * settings.unitL;
     return PRESETS.reduce((b, pr) => (Math.abs(pr.w * pr.l - a) < Math.abs(b.w * b.l - a) ? pr : b)).key;
@@ -384,6 +388,7 @@ export default function App() {
 
   const TABS = [
     { key: "map", label: "Map" },
+    { key: "trailer", label: "Trailer" },
     { key: "customers", label: "Customers" },
     { key: "stats", label: "Stats" },
     { key: "settings", label: "Settings" },
@@ -441,32 +446,6 @@ export default function App() {
                   <textarea placeholder="Notes" rows={2} value={selKnock.notes || ""} onChange={(e) => updateCustomer(sel._key, "notes", e.target.value)} />
                 </div>
               )}
-              {(() => {
-                const glb = `${import.meta.env.BASE_URL}models/${modelName}.glb`;
-                const usdz = `${import.meta.env.BASE_URL}models/${modelName}.usdz`;
-                const glbAbs = new URL(glb, window.location.href).href;
-                const scene = `https://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(glbAbs)}&mode=ar_preferred`;
-                return (
-                  <div className="arbox">
-                    {IS_IOS ? (
-                      <a className="ar-anchor" rel="ar" href={usdz}><img src={`${import.meta.env.BASE_URL}ar-poster.png`} alt="View in your yard" /></a>
-                    ) : IS_ANDROID ? (
-                      <a className="ar-cta" href={scene}>View in your yard</a>
-                    ) : (
-                      <div className="arnote">Open Yardscout on your phone (iPhone or Android) to drop the real-scale trailer in the backyard with the camera.</div>
-                    )}
-                    {!arReady ? (
-                      <button className="arbtn ghost" onClick={openAR}>See a 3D preview</button>
-                    ) : (
-                      <model-viewer src={glb}
-                        {...{ "camera-controls": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95", "interaction-prompt": "none" }}
-                        style={{ width: "100%", height: "180px", background: "#eef1f0", borderRadius: "10px", marginTop: "8px" }}>
-                      </model-viewer>
-                    )}
-                    <div className="arnote">Real-scale {settings.unitW}×{settings.unitL} ft unit.</div>
-                  </div>
-                );
-              })()}
             </div>
           )}
         </main>
@@ -551,6 +530,44 @@ export default function App() {
               })}
             </div>
             <p className="note">Verdicts use lot size and open space from county records. The deeper back-it-in vs. crane access scoring comes from the building-footprint pass.</p>
+            </div>
+          </section>
+        )}
+
+        {tab === "trailer" && (
+          <section className="panel padded">
+            <div className="swrap">
+              <div className="phd">Your trailer</div>
+              {(() => {
+                const glb = `${import.meta.env.BASE_URL}models/${modelName}.glb`;
+                const usdz = `${import.meta.env.BASE_URL}models/${modelName}.usdz`;
+                const scene = `https://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(new URL(glb, window.location.href).href)}&mode=ar_preferred`;
+                return (
+                  <>
+                    {arReady ? (
+                      <model-viewer src={glb}
+                        {...{ "camera-controls": "", "auto-rotate": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95", "interaction-prompt": "none" }}
+                        style={{ width: "100%", height: "330px", background: "#eef1f0", borderRadius: "14px" }}>
+                      </model-viewer>
+                    ) : (
+                      <div className="mvload" style={{ height: "330px" }}><div className="spin" /></div>
+                    )}
+                    <div className="readout" style={{ marginTop: "12px" }}>
+                      <div><b>{settings.unitW}</b><span>width ft</span></div>
+                      <div><b>{settings.unitL}</b><span>length ft</span></div>
+                      <div><b>{settings.unitH}</b><span>height ft</span></div>
+                    </div>
+                    {IS_IOS ? (
+                      <a className="ar-anchor" style={{ marginTop: "14px" }} rel="ar" href={usdz}><img src={`${import.meta.env.BASE_URL}ar-poster.png`} alt="View in your yard" /></a>
+                    ) : IS_ANDROID ? (
+                      <a className="ar-cta" style={{ marginTop: "14px" }} href={scene}>View in your yard</a>
+                    ) : (
+                      <div className="arnote">Spin the 3D model above on a computer. To place it in a real yard with the camera, open Yardscout on your phone — the camera view is phone-only.</div>
+                    )}
+                    <p className="snote">Matches your {settings.unitW}×{settings.unitL} ft unit. Change the size under Settings.</p>
+                  </>
+                );
+              })()}
             </div>
           </section>
         )}
