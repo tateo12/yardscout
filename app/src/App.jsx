@@ -565,7 +565,6 @@ export default function App() {
                       <div className="arnote">Spin the 3D model above on a computer. To place it in a real yard with the camera, open Yardscout on your phone — the camera view is phone-only.</div>
                     )}
                     <p className="snote">Matches your {settings.unitW}×{settings.unitL} ft unit. Change the size under Settings.</p>
-                    <p className="cred">3D model: “Small House” by Jarlan Perez, licensed under <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC-BY</a> (via Poly Pizza).</p>
                   </>
                 );
               })()}
