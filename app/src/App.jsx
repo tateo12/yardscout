@@ -71,21 +71,12 @@ function scoreOf(props, s) {
   return "green";
 }
 
-const colorFor = (props, knocks, s) => {
-  const k = knocks[props._key];
-  if (k && k.outcome && STAT[k.outcome]) return STAT[k.outcome].color;
-  if (s.highlightRentals && isRental(props)) return RENTAL_COLOR;
-  return TIER[props._tier].color;
-};
-
-const styleFor = (feat, knocks, s) => {
+// parcel color = scoring verdict (or rental). Knocks/customers never recolor the parcel — only the flag.
+const styleFor = (feat, s) => {
   const p = feat.properties;
-  const c = colorFor(p, knocks, s);
-  const k = knocks[p._key];
-  if (k && k.outcome && STAT[k.outcome])
-    return { color: "#fff", weight: k.outcome === "booked" ? 2.5 : 1.2, fillColor: c, fillOpacity: 0.92 };
   if (s.highlightRentals && isRental(p))
-    return { color: c, weight: 1.3, fillColor: c, fillOpacity: 0.5 };
+    return { color: RENTAL_COLOR, weight: 1.3, fillColor: RENTAL_COLOR, fillOpacity: 0.5 };
+  const c = TIER[p._tier].color;
   return { color: c, weight: 1, fillColor: c, fillOpacity: 0.3 };
 };
 
@@ -158,7 +149,7 @@ export default function App() {
     if (layer) {
       layer.eachLayer((lyr) => {
         lyr.feature.properties._tier = scoreOf(lyr.feature.properties, settings);
-        lyr.setStyle(styleFor(lyr.feature, knocksRef.current, settings));
+        lyr.setStyle(styleFor(lyr.feature, settings));
       });
       setFeatures((fs) => fs.slice());
     }
@@ -175,7 +166,7 @@ export default function App() {
     if (!window.confirm("Clear all customers and knocks? This can't be undone.")) return;
     setKnocks({}); knocksRef.current = {};
     const layer = layerRef.current;
-    if (layer) layer.eachLayer((lyr) => lyr.setStyle(styleFor(lyr.feature, {}, settingsRef.current)));
+    if (layer) layer.eachLayer((lyr) => lyr.setStyle(styleFor(lyr.feature, settingsRef.current)));
   };
 
   const renderParcels = useCallback((rawFeatures) => {
@@ -188,7 +179,7 @@ export default function App() {
       p._tier = scoreOf(p, settingsRef.current);
     });
     const layer = L.geoJSON({ type: "FeatureCollection", features: rawFeatures }, {
-      style: (f) => styleFor(f, knocksRef.current, settingsRef.current),
+      style: (f) => styleFor(f, settingsRef.current),
       onEachFeature: (f, lyr) => {
         idToLayer.current[f.properties._key] = lyr;
         lyr.on("click", () => setSelected(f.properties._key));
@@ -320,8 +311,6 @@ export default function App() {
         next[key] = { ...(prev[key] || {}), outcome, ts: Date.now(), addr: props?.PARCEL_ADD, city: props?.PARCEL_CITY, center };
       }
       knocksRef.current = next;
-      const lyr = idToLayer.current[key];
-      if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
       updateFlag(key, next);
       return next;
     });
@@ -334,7 +323,6 @@ export default function App() {
     setKnocks((prev) => {
       const next = { ...prev, [key]: { ...(prev[key] || {}), outcome: value } };
       knocksRef.current = next;
-      const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
       updateFlag(key, next);
       return next;
     });
@@ -347,7 +335,6 @@ export default function App() {
 
   const removeCustomer = (key) =>
     setKnocks((prev) => { const next = { ...prev }; delete next[key]; knocksRef.current = next;
-      const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
       updateFlag(key, next); return next; });
 
   const toggleExpand = (key) =>
@@ -454,17 +441,15 @@ export default function App() {
                 {!arReady ? (
                   <button className="arbtn" onClick={openAR}>See the trailer in this yard</button>
                 ) : (
-                  <>
-                    <model-viewer ref={mvRef}
-                      src={`${import.meta.env.BASE_URL}models/${modelName}.glb`}
-                      ios-src={`${import.meta.env.BASE_URL}models/${modelName}.usdz`}
-                      {...{ ar: "", "ar-modes": "webxr scene-viewer quick-look", "ar-scale": "fixed", "camera-controls": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95" }}
-                      style={{ width: "100%", height: "180px", background: "#eef1f0", borderRadius: "10px" }}>
-                    </model-viewer>
-                    <button className="arbtn launch" onClick={() => mvRef.current?.activateAR?.()}>View in your yard (camera)</button>
-                  </>
+                  <model-viewer
+                    src={`${import.meta.env.BASE_URL}models/${modelName}.glb`}
+                    ios-src={`${import.meta.env.BASE_URL}models/${modelName}.usdz`}
+                    {...{ ar: "", "ar-modes": "webxr scene-viewer quick-look", "ar-scale": "fixed", "camera-controls": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95" }}
+                    style={{ width: "100%", height: "190px", background: "#eef1f0", borderRadius: "10px" }}>
+                    <button slot="ar-button" className="ar-launch">View in your yard</button>
+                  </model-viewer>
                 )}
-                <div className="arnote">Real-scale {settings.unitW}×{settings.unitL} ft unit. On a phone, “View in your yard” opens the camera to drop it in the backyard at true size and walk around it.</div>
+                <div className="arnote">Real-scale {settings.unitW}×{settings.unitL} ft unit. The green “View in your yard” button shows on a phone and opens the camera to place it in the backyard. AR needs a phone — it won’t appear on a computer.</div>
               </div>
             </div>
           )}
