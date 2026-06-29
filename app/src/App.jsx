@@ -71,15 +71,31 @@ function scoreOf(props, s) {
   return "green";
 }
 
-const styleFor = (feat, knocks, s) => {
-  const k = knocks[feat.properties._key];
-  if (k && k.outcome && STAT[k.outcome])
-    return { color: "#fff", weight: k.outcome === "booked" ? 2.5 : 1.2, fillColor: STAT[k.outcome].color, fillOpacity: 0.92 };
-  if (s.highlightRentals && isRental(feat.properties))
-    return { color: RENTAL_COLOR, weight: 1.3, fillColor: RENTAL_COLOR, fillOpacity: 0.5 };
-  const t = feat.properties._tier;
-  return { color: TIER[t].color, weight: 1, fillColor: TIER[t].color, fillOpacity: 0.3 };
+const colorFor = (props, knocks, s) => {
+  const k = knocks[props._key];
+  if (k && k.outcome && STAT[k.outcome]) return STAT[k.outcome].color;
+  if (s.highlightRentals && isRental(props)) return RENTAL_COLOR;
+  return TIER[props._tier].color;
 };
+
+const styleFor = (feat, knocks, s) => {
+  const p = feat.properties;
+  const c = colorFor(p, knocks, s);
+  const k = knocks[p._key];
+  if (k && k.outcome && STAT[k.outcome])
+    return { color: "#fff", weight: k.outcome === "booked" ? 2.5 : 1.2, fillColor: c, fillOpacity: 0.92 };
+  if (s.highlightRentals && isRental(p))
+    return { color: c, weight: 1.3, fillColor: c, fillOpacity: 0.5 };
+  return { color: c, weight: 1, fillColor: c, fillOpacity: 0.3 };
+};
+
+// flag marker (Option D): pole-left flag, recolored via currentColor, scaled by zoom via the --pz CSS var
+const PIN_ZOOM = 17;            // flags fade in at street zoom; wider views stay polygon-only for speed
+const FLAG_SVG =
+  '<svg width="22" height="29" viewBox="0 0 25 33"><path d="M5.5 33V2.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M6.5 3.2h13.5l-3.4 4.6 3.4 4.6H6.5Z" fill="currentColor" stroke="#fff" stroke-width="1"/></svg>';
+const pinScale = (z) => Math.min(2.0, Math.max(0.7, Math.pow(1.3, z - 18)));
+const flagIcon = (color) =>
+  L.divIcon({ className: "flag-wrap", html: `<div class="flag" style="color:${color}">${FLAG_SVG}</div>`, iconSize: [22, 29], iconAnchor: [4.8, 29] });
 
 const Icon = ({ name }) => {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
@@ -103,6 +119,8 @@ export default function App() {
   const mapRef = useRef(null);
   const baseLayerRef = useRef(null);
   const layerRef = useRef(null);
+  const markersRef = useRef(null);
+  const markerByKey = useRef({});
   const idToLayer = useRef({});
   const knocksRef = useRef({});
   const reqToken = useRef(0);
@@ -134,6 +152,8 @@ export default function App() {
       layer.eachLayer((lyr) => {
         lyr.feature.properties._tier = scoreOf(lyr.feature.properties, settings);
         lyr.setStyle(styleFor(lyr.feature, knocksRef.current, settings));
+        const mk = markerByKey.current[lyr.feature.properties._key];
+        if (mk) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, knocksRef.current, settings)));
       });
       setFeatures((fs) => fs.slice());
     }
@@ -170,6 +190,24 @@ export default function App() {
       },
     }).addTo(map);
     layerRef.current = layer;
+
+    // flag markers, only at street zoom (keeps wide views fast)
+    if (markersRef.current) { map.removeLayer(markersRef.current); markersRef.current = null; }
+    markerByKey.current = {};
+    if (map.getZoom() >= PIN_ZOOM) {
+      const grp = L.layerGroup();
+      rawFeatures.forEach((f) => {
+        const p = f.properties;
+        const poly = idToLayer.current[p._key];
+        if (!poly) return;
+        const m = L.marker(poly.getBounds().getCenter(), { icon: flagIcon(colorFor(p, knocksRef.current, settingsRef.current)) });
+        m.on("click", () => setSelected(p._key));
+        markerByKey.current[p._key] = m;
+        grp.addLayer(m);
+      });
+      grp.addTo(map);
+      markersRef.current = grp;
+    }
     setFeatures(rawFeatures.map((f) => f.properties));
   }, []);
 
@@ -217,6 +255,9 @@ export default function App() {
     const map = L.map("map", { preferCanvas: true, zoomControl: true, attributionControl: false }).setView([home.lat, home.lng], home.zoom);
     mapRef.current = map;
     baseLayerRef.current = L.tileLayer(TILES[settingsRef.current.mapStyle] || TILES.satellite, { maxZoom: 20 }).addTo(map);
+    const setPinScale = () => map.getContainer().style.setProperty("--pz", pinScale(map.getZoom()));
+    setPinScale();
+    map.on("zoomend", setPinScale);
     let t;
     const debounced = () => { clearTimeout(t); t = setTimeout(loadViewport, 400); };
     map.on("moveend", debounced);
@@ -248,6 +289,7 @@ export default function App() {
       knocksRef.current = next;
       const lyr = idToLayer.current[key];
       if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
+      { const mk = markerByKey.current[key]; if (mk && lyr) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, next, settingsRef.current))); }
       return next;
     });
   };
@@ -260,6 +302,7 @@ export default function App() {
       const next = { ...prev, [key]: { ...(prev[key] || {}), outcome: value } };
       knocksRef.current = next;
       const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
+      { const mk = markerByKey.current[key]; if (mk && lyr) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, next, settingsRef.current))); }
       return next;
     });
 
@@ -271,7 +314,8 @@ export default function App() {
 
   const removeCustomer = (key) =>
     setKnocks((prev) => { const next = { ...prev }; delete next[key]; knocksRef.current = next;
-      const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current)); return next; });
+      const lyr = idToLayer.current[key]; if (lyr) lyr.setStyle(styleFor(lyr.feature, next, settingsRef.current));
+      { const mk = markerByKey.current[key]; if (mk && lyr) mk.setIcon(flagIcon(colorFor(lyr.feature.properties, next, settingsRef.current))); } return next; });
 
   const toggleExpand = (key) =>
     setExpanded((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
