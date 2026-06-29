@@ -64,6 +64,8 @@
 .ar-anchor img { width: 100%; display: block; }
 .ar-cta { display: block; text-align: center; text-decoration: none; background: var(--green); color: #fff; font-weight: 700; font-size: 15px; padding: 14px; border-radius: 26px; }
 .arbtn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+.cred { font-size: 10.5px; color: #9aa3ab; margin-top: 10px; }
+.cred a { color: #9aa3ab; }
 .mvload { display: flex; align-items: center; justify-content: center; background: #eef1f0; border-radius: 14px; }
 .mvload .spin { border-color: rgba(0,0,0,.15); border-top-color: var(--green); }
 
