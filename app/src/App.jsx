@@ -127,7 +127,7 @@ const Logo = () => (
   </svg>
 );
 
-export default function App() {
+export default function App({ profile, signOut } = {}) {
   const mapRef = useRef(null);
   const baseLayerRef = useRef(null);
   const layerRef = useRef(null);
@@ -610,6 +610,18 @@ export default function App() {
         {tab === "settings" && (
           <section className="panel padded">
             <div className="swrap">
+              {profile && (
+                <>
+                  <div className="phd">Account</div>
+                  <div className="acct">
+                    <div className="who">
+                      <b>{profile.name || "You"} · {profile.role === "owner" ? "Owner" : "Rep"}</b>
+                      <span>{profile.org?.name}</span>
+                    </div>
+                    <button className="signout" onClick={signOut}>Sign out</button>
+                  </div>
+                </>
+              )}
               <div className="phd">Trailer</div>
               <div className="presets">
                 {PRESETS.map((pr) => {

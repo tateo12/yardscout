@@ -1,0 +1,34 @@
+.auth {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(120% 120% at 50% 0%, #1b2430, #0f1623);
+  padding: 20px; padding-top: calc(env(safe-area-inset-top) + 20px);
+}
+.auth-card {
+  width: 100%; max-width: 360px; background: #fff; border-radius: 18px; padding: 28px 24px;
+  box-shadow: 0 16px 50px rgba(0,0,0,.45); display: flex; flex-direction: column; gap: 12px;
+}
+.auth-logo { font-size: 22px; font-weight: 800; letter-spacing: -.3px; color: #14181e; }
+.auth-logo::first-letter { color: var(--green); }
+.auth-sub { font-size: 14px; color: var(--muted); margin: -4px 0 6px; }
+.auth-card input {
+  width: 100%; padding: 13px 14px; border: 1px solid var(--line); border-radius: 11px;
+  font-size: 16px; font-family: inherit; color: var(--text); background: #fff;
+}
+.auth-card input:focus { outline: none; border-color: var(--green); }
+.auth-btn {
+  width: 100%; border: 0; background: var(--green); color: #fff; font-weight: 700; font-size: 15px;
+  padding: 14px; border-radius: 11px; cursor: pointer; font-family: inherit; margin-top: 2px;
+}
+.auth-btn:disabled { opacity: .6; cursor: default; }
+.auth-msg { font-size: 13px; color: #b4541f; background: #fff5e6; border-radius: 9px; padding: 10px 12px; line-height: 1.4; }
+.auth-disc { font-size: 13.5px; color: #444b54; line-height: 1.55; margin: 2px 0 4px; }
+.auth-links { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-top: 6px; }
+.auth-links button { border: 0; background: transparent; color: var(--green); font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; }
+.auth-spin { width: 26px; height: 26px; border: 3px solid #e2e6e4; border-top-color: var(--green); border-radius: 50%; animation: sp .8s linear infinite; margin: 8px 0; }
+
+/* account row added into Settings */
+.acct { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.acct .who { flex: 1; min-width: 0; }
+.acct .who b { font-size: 14px; display: block; }
+.acct .who span { font-size: 12px; color: var(--muted); }
+.acct .signout { border: 1px solid var(--line); background: #fff; color: var(--red); font-weight: 700; font-size: 13px; padding: 9px 14px; border-radius: 9px; cursor: pointer; font-family: inherit; }
