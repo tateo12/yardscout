@@ -20,7 +20,7 @@ export async function saveCustomer(c) {
     id: c.id,                       // undefined for new -> DB generates
     org_id: c.org_id,               // set by caller from profile.org_id
     parcel_id: c.parcel_id ?? null,
-    status: c.status ?? "lead",
+    status: c.status === undefined ? "lead" : c.status,  // explicit null stays null (outcome toggled off)
     name: c.name ?? null, phone: c.phone ?? null, email: c.email ?? null,
     addr: c.addr ?? null, city: c.city ?? null,
     method: c.method ?? null, place_date: c.place_date || null,
@@ -63,13 +63,39 @@ export async function logKnock(k) {
   return data;
 }
 
+// ---------- parcel flags (flag-wrong-lot: a rep's override of the computed fit verdict) ----------
+export async function loadFlags() {
+  const { data, error } = await supabase.from("parcel_flags").select("*");
+  if (error) throw error;
+  return data || [];
+}
+
+// upsert one parcel's override. verdict 'fits' | 'no_fit' | null (null clears the override).
+export async function saveFlag(f) {
+  const row = {
+    org_id: f.org_id,
+    parcel_id: f.parcel_id,
+    verdict: f.verdict ?? null,
+    note: f.note ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from("parcel_flags")
+    .upsert(row, { onConflict: "org_id,parcel_id" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // ---------- realtime ----------
-// fire `cb` whenever this org's customers or knocks change (insert/update/delete). returns an unsubscribe fn.
+// fire `cb(table)` whenever this org's shared data changes. returns an unsubscribe fn.
 export function subscribeShared(orgId, cb) {
   const ch = supabase
     .channel(`org-${orgId}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "customers", filter: `org_id=eq.${orgId}` }, () => cb("customers"))
     .on("postgres_changes", { event: "*", schema: "public", table: "knocks", filter: `org_id=eq.${orgId}` }, () => cb("knocks"))
+    .on("postgres_changes", { event: "*", schema: "public", table: "parcel_flags", filter: `org_id=eq.${orgId}` }, () => cb("parcel_flags"))
     .subscribe();
   return () => supabase.removeChannel(ch);
 }

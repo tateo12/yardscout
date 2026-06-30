@@ -57,6 +57,12 @@
 .obtn { border: 1px solid var(--line); background: #fff; border-radius: 9px; padding: 8px 11px; font-size: 12px; font-weight: 600; cursor: pointer; color: #2b3140; font-family: inherit; }
 .obtn:active { transform: scale(.97); }
 .custfields { display: flex; flex-direction: column; gap: 8px; margin-top: 13px; }
+.corrected { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--graphite); color: #fff; font-size: 9px; letter-spacing: .6px; vertical-align: middle; }
+.flagrow { display: flex; gap: 6px; }
+.flagbtn { flex: 1; border: 1px solid var(--line); background: #fff; border-radius: 9px; padding: 9px; font-size: 12px; font-weight: 700; cursor: pointer; color: #2b3140; font-family: inherit; }
+.flagbtn:active { transform: scale(.97); }
+.flagbtn.fit.on { background: #1fa36b; border-color: #1fa36b; color: #fff; }
+.flagbtn.nofit.on { background: #dd5145; border-color: #dd5145; color: #fff; }
 .lot3d { width: 100%; border: 0; background: var(--graphite); color: #fff; font-weight: 700; font-size: 13px; padding: 11px; border-radius: 10px; cursor: pointer; font-family: inherit; margin: 8px 0 2px; }
 .disclaim { font-size: 11px; color: var(--muted); line-height: 1.4; margin: 12px 0 2px; padding: 8px 10px; background: #fff5e6; border-left: 3px solid var(--amber); border-radius: 4px; }
 

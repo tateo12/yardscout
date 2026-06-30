@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
+import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
@@ -64,7 +65,6 @@ const METHODS = [
   { key: "backin", label: "Back it in" },
   { key: "crane", label: "Crane it in" },
 ];
-const LS_KEY = "yardscout.knocks.v2";
 
 function scoreOf(props, s) {
   const lot = (props.PARCEL_ACRES || 0) * SQFT_PER_ACRE;
@@ -135,14 +135,21 @@ export default function App({ profile, signOut } = {}) {
   const markerByKey = useRef({});
   const idToLayer = useRef({});
   const knocksRef = useRef({});
+  const flagsRef = useRef({});
+  const dirtyRef = useRef(new Set());   // customer keys with an unsaved/in-flight edit — preserved across realtime reloads
+  const verRef = useRef({});            // per-key write version; a reload only clears dirty if no newer edit landed
+  const flagDirtyRef = useRef(new Set());
+  const flagVerRef = useRef({});
+  const saveTimers = useRef({});
+  const orgId = profile?.org_id;
+  const orgIdRef = useRef(orgId);
   const reqToken = useRef(0);
   const meMarker = useRef(null);
   const mvRef = useRef(null);
 
   const [features, setFeatures] = useState([]);
-  const [knocks, setKnocks] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; }
-  });
+  const [knocks, setKnocks] = useState({});      // shared CRM, loaded from Supabase (keyed by parcel_id or cust_<id>)
+  const [flags, setFlags] = useState({});        // parcel_id -> 'fits' | 'no_fit' (rep override of computed verdict)
   const [tab, setTab] = useState("map");
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -156,7 +163,104 @@ export default function App({ profile, signOut } = {}) {
   });
   const settingsRef = useRef(settings);
 
-  useEffect(() => { knocksRef.current = knocks; localStorage.setItem(LS_KEY, JSON.stringify(knocks)); }, [knocks]);
+  useEffect(() => { knocksRef.current = knocks; }, [knocks]);
+  useEffect(() => { flagsRef.current = flags; }, [flags]);
+  useEffect(() => { orgIdRef.current = orgId; }, [orgId]);
+
+  // ---- Supabase <-> in-memory mapping. Each knocks entry is one customers row; status carries the outcome. ----
+  const rowToRec = (r) => ({
+    _id: r.id,
+    outcome: r.status,
+    ts: r.created_at ? Date.parse(r.created_at) : Date.now(),
+    addr: r.addr, city: r.city,
+    center: r.lat != null && r.lng != null ? [r.lat, r.lng] : undefined,
+    name: r.name, phone: r.phone, email: r.email,
+    method: r.method, date: r.place_date, price: r.price, notes: r.notes,
+    saved: true,
+  });
+  const recToRow = (key, rec) => ({
+    id: rec._id,
+    org_id: orgIdRef.current,
+    parcel_id: key.startsWith("cust_") ? null : key,
+    status: rec.outcome ?? null,
+    name: rec.name, phone: rec.phone, email: rec.email,
+    addr: rec.addr, city: rec.city,
+    method: rec.method, place_date: rec.date, price: rec.price, notes: rec.notes,
+    lat: rec.center?.[0], lng: rec.center?.[1],
+  });
+
+  // single source of truth for a parcel's color: a rep's flag wins, else the computed score.
+  const resolveVerdict = (key, props) =>
+    flagsRef.current[key] === "no_fit" ? "red"
+      : flagsRef.current[key] === "fits" ? "green"
+        : scoreOf(props, settingsRef.current);
+
+  const touch = (key) => { dirtyRef.current.add(key); return (verRef.current[key] = (verRef.current[key] || 0) + 1); };
+
+  // push one key's current local record to Supabase (id is client-generated, so no return-value remap needed).
+  const persist = (key) => {
+    const rec = knocksRef.current[key];
+    if (!rec || !orgIdRef.current) return;
+    const ver = verRef.current[key];
+    saveCustomer(recToRow(key, rec))
+      .then(() => { if (verRef.current[key] === ver) dirtyRef.current.delete(key); })  // keep dirty if a newer edit landed
+      .catch((e) => console.error("save customer failed", e));
+  };
+  const schedulePersist = (key) => {
+    clearTimeout(saveTimers.current[key]);
+    saveTimers.current[key] = setTimeout(() => persist(key), 700);
+  };
+
+  // redraw the customer flag pins and recolor polygons from current knocks/flags (after a realtime reload).
+  const refreshShared = useCallback(() => {
+    const map = mapRef.current, group = markersRef.current;
+    if (map && group) {
+      group.clearLayers();
+      markerByKey.current = {};
+      const h = sizeForZoom(map.getZoom());
+      Object.entries(knocksRef.current).forEach(([key, k]) => {
+        if (!CUSTOMER_OUTCOMES.includes(k.outcome)) return;
+        const poly = idToLayer.current[key];
+        if (!poly) return;
+        const m = L.marker(poly.getBounds().getCenter(), { icon: flagIcon(STAT[k.outcome].color, h) });
+        m.on("click", () => setSelected(key));
+        markerByKey.current[key] = m;
+        group.addLayer(m);
+      });
+    }
+    const layer = layerRef.current;
+    if (layer) layer.eachLayer((lyr) => {
+      lyr.feature.properties._tier = resolveVerdict(lyr.feature.properties._key, lyr.feature.properties);
+      lyr.setStyle(styleFor(lyr.feature, settingsRef.current));
+    });
+  }, []);
+
+  // load shared data on login and keep it live; Supabase is authoritative (no localStorage for shared data).
+  useEffect(() => {
+    if (!orgId) return;
+    let alive = true;
+    const reload = async () => {
+      try {
+        const [rows, fl] = await Promise.all([loadCustomers(), loadFlags()]);
+        if (!alive) return;
+        setFlags((prevF) => {
+          const fmap = {}; fl.forEach((f) => { fmap[f.parcel_id] = f.verdict; });
+          flagDirtyRef.current.forEach((k) => { fmap[k] = prevF[k]; });  // keep in-flight flag edits
+          flagsRef.current = fmap; return fmap;
+        });
+        setKnocks((prev) => {
+          const next = {};
+          rows.forEach((r) => { next[r.parcel_id || "cust_" + r.id] = rowToRec(r); });
+          dirtyRef.current.forEach((k) => { if (prev[k]) next[k] = prev[k]; });  // keep in-flight customer edits
+          knocksRef.current = next; return next;
+        });
+        refreshShared();
+      } catch (e) { console.error("load shared data failed", e); }
+    };
+    reload();
+    const unsub = subscribeShared(orgId, () => reload());
+    return () => { alive = false; unsub(); };
+  }, [orgId, refreshShared]);
 
   // re-score + restyle loaded parcels when settings change (no refetch needed)
   useEffect(() => {
@@ -165,7 +269,7 @@ export default function App({ profile, signOut } = {}) {
     const layer = layerRef.current;
     if (layer) {
       layer.eachLayer((lyr) => {
-        lyr.feature.properties._tier = scoreOf(lyr.feature.properties, settings);
+        lyr.feature.properties._tier = resolveVerdict(lyr.feature.properties._key, lyr.feature.properties);
         lyr.setStyle(styleFor(lyr.feature, settings));
       });
       setFeatures((fs) => fs.slice());
@@ -180,8 +284,10 @@ export default function App({ profile, signOut } = {}) {
     setSetting("home", { lat: c.lat, lng: c.lng, zoom: m.getZoom() });
   };
   const clearData = () => {
-    if (!window.confirm("Clear all customers and knocks? This can't be undone.")) return;
+    if (!window.confirm("Remove every customer for your whole team? This can't be undone.")) return;
+    Object.values(knocksRef.current).forEach((rec) => { if (rec._id) deleteCustomer(rec._id).catch((e) => console.error(e)); });
     setKnocks({}); knocksRef.current = {};
+    if (markersRef.current) { markersRef.current.clearLayers(); markerByKey.current = {}; }
     const layer = layerRef.current;
     if (layer) layer.eachLayer((lyr) => lyr.setStyle(styleFor(lyr.feature, settingsRef.current)));
   };
@@ -207,7 +313,7 @@ export default function App({ profile, signOut } = {}) {
     rawFeatures.forEach((f) => {
       const p = f.properties;
       p._key = String(p.PARCEL_ID || p.OBJECTID);
-      p._tier = scoreOf(p, settingsRef.current);
+      p._tier = resolveVerdict(p._key, p);
     });
     const layer = L.geoJSON({ type: "FeatureCollection", features: rawFeatures }, {
       style: (f) => styleFor(f, settingsRef.current),
@@ -335,41 +441,72 @@ export default function App({ profile, signOut } = {}) {
   const flyTo = (center, zoom = 18) => mapRef.current?.flyTo(center, zoom, { duration: 0.6 });
 
   const record = (key, outcome, props, center) => {
+    let toDelete = null, toSave = false;
     setKnocks((prev) => {
       const next = { ...prev };
       if (prev[key]?.outcome === outcome) {
         const keep = prev[key];
-        if (keep.name || keep.phone || keep.notes) next[key] = { ...keep, outcome: null };
-        else delete next[key];
+        if (keep.name || keep.phone || keep.notes) { next[key] = { ...keep, outcome: null }; toSave = true; }
+        else { delete next[key]; toDelete = keep._id; }
       } else {
-        next[key] = { ...(prev[key] || {}), outcome, ts: Date.now(), addr: props?.PARCEL_ADD, city: props?.PARCEL_CITY, center };
+        const id = prev[key]?._id || crypto.randomUUID();   // client-generated id: stable from creation, no return-value remap
+        next[key] = { ...(prev[key] || {}), _id: id, outcome, ts: prev[key]?.ts || Date.now(), addr: props?.PARCEL_ADD, city: props?.PARCEL_CITY, center };
+        toSave = true;
       }
       knocksRef.current = next;
       updateFlag(key, next);
       return next;
     });
+    if (toSave) { touch(key); persist(key); }
+    else if (toDelete) { dirtyRef.current.delete(key); delete verRef.current[key]; deleteCustomer(toDelete).catch((e) => console.error(e)); }
   };
 
-  const updateCustomer = (key, field, value) =>
+  const updateCustomer = (key, field, value) => {
     setKnocks((prev) => { const next = { ...prev, [key]: { ...(prev[key] || {}), [field]: value } }; knocksRef.current = next; return next; });
+    touch(key); schedulePersist(key);
+  };
 
-  const setStatus = (key, value) =>
+  const setStatus = (key, value) => {
     setKnocks((prev) => {
       const next = { ...prev, [key]: { ...(prev[key] || {}), outcome: value } };
       knocksRef.current = next;
       updateFlag(key, next);
       return next;
     });
+    touch(key); persist(key);
+  };
 
   const addCustomer = () => {
-    const key = "cust_" + crypto.randomUUID();
-    setKnocks((prev) => { const next = { ...prev, [key]: { outcome: "lead", ts: Date.now() } }; knocksRef.current = next; return next; });
+    const id = crypto.randomUUID(), key = "cust_" + id;   // key matches the row's future "cust_"+id so reload is stable
+    setKnocks((prev) => { const next = { ...prev, [key]: { _id: id, outcome: "lead", ts: Date.now() } }; knocksRef.current = next; return next; });
+    touch(key); persist(key);
     setTab("customers");
   };
 
-  const removeCustomer = (key) =>
-    setKnocks((prev) => { const next = { ...prev }; delete next[key]; knocksRef.current = next;
-      updateFlag(key, next); return next; });
+  const removeCustomer = (key) => {
+    const id = knocksRef.current[key]?._id;
+    dirtyRef.current.delete(key); delete verRef.current[key];
+    setKnocks((prev) => { const next = { ...prev }; delete next[key]; knocksRef.current = next; updateFlag(key, next); return next; });
+    if (id) deleteCustomer(id).catch((e) => console.error(e));
+  };
+
+  // flag-wrong-lot: a rep overrides the computed verdict for everyone. Tapping the active one clears it.
+  const setFlag = (key, verdict) => {
+    flagDirtyRef.current.add(key);
+    const ver = (flagVerRef.current[key] = (flagVerRef.current[key] || 0) + 1);
+    setFlags((prev) => {
+      const next = { ...prev };
+      const cleared = prev[key] === verdict;
+      if (cleared) delete next[key]; else next[key] = verdict;
+      flagsRef.current = next;
+      const lyr = idToLayer.current[key];
+      if (lyr) { lyr.feature.properties._tier = resolveVerdict(key, lyr.feature.properties); lyr.setStyle(styleFor(lyr.feature, settingsRef.current)); setFeatures((fs) => fs.slice()); }
+      saveFlag({ org_id: orgIdRef.current, parcel_id: key, verdict: cleared ? null : verdict })
+        .then(() => { if (flagVerRef.current[key] === ver) flagDirtyRef.current.delete(key); })
+        .catch((e) => console.error("save flag failed", e));
+      return next;
+    });
+  };
 
   const toggleExpand = (key) =>
     setExpanded((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -464,6 +601,11 @@ export default function App({ profile, signOut } = {}) {
                 const groundMeters = Math.max(latM, lngM, 12) * 1.8;
                 setShow3D({ center: { lat: c.lat, lng: c.lng }, groundMeters, modelUrl: `${import.meta.env.BASE_URL}models/${modelName}.glb`, label: sel.PARCEL_ADD || "Parcel" });
               }}>View on the lot in 3D</button>
+              <div className="dlabel">Fix the call {flags[sel._key] && <span className="corrected">rep-corrected</span>}</div>
+              <div className="flagrow">
+                <button className={"flagbtn fit" + (flags[sel._key] === "fits" ? " on" : "")} onClick={() => setFlag(sel._key, "fits")}>It fits</button>
+                <button className={"flagbtn nofit" + (flags[sel._key] === "no_fit" ? " on" : "")} onClick={() => setFlag(sel._key, "no_fit")}>Won't fit</button>
+              </div>
               <div className="dlabel">Log a knock</div>
               <div className="outcomes">
                 {OUTCOMES.map((o) => (
