@@ -86,36 +86,59 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
       controls.minDistance = 3;
       controls.maxDistance = groundMeters * 3;
 
-      // drag the trailer across the lot (grab the model = move it; drag empty space = orbit)
+      // gestures: 1 finger on trailer = move it; 2 fingers twisting = rotate it; 1 finger on map = orbit camera.
       const ray = new THREE.Raycaster();
       const ndc = new THREE.Vector2();
       const gp = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
       const hitPt = new THREE.Vector3();
       const half = groundMeters / 2;
-      let dragging = false;
+      const pointers = new Map(); // pointerId -> {x,y}
+      let mode = null;            // 'drag' | 'twist' | null (null = let OrbitControls handle it)
+      let lastAngle = 0;
       const setNdc = (e) => {
         const r = renderer.domElement.getBoundingClientRect();
         ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
         ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
       };
-      const onDown = (e) => {
-        if (!model) return;
-        setNdc(e); ray.setFromCamera(ndc, camera);
-        if (ray.intersectObject(model, true).length) { dragging = true; controls.enabled = false; }
+      const twoFingerAngle = () => {
+        const [a, b] = [...pointers.values()];
+        return Math.atan2(b.y - a.y, b.x - a.x);
       };
-      const onMove = (e) => {
-        if (!dragging || !model) return;
-        setNdc(e); ray.setFromCamera(ndc, camera);
-        if (ray.ray.intersectPlane(gp, hitPt)) {
-          model.position.x = Math.max(-half, Math.min(half, hitPt.x));
-          model.position.z = Math.max(-half, Math.min(half, hitPt.z));
+      const onDown = (e) => {
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size === 2) {
+          mode = "twist"; controls.enabled = false; lastAngle = twoFingerAngle();
+        } else if (pointers.size === 1 && model) {
+          setNdc(e); ray.setFromCamera(ndc, camera);
+          if (ray.intersectObject(model, true).length) { mode = "drag"; controls.enabled = false; }
+          else mode = null; // empty space -> camera orbit (OrbitControls)
         }
       };
-      const onUp = () => { dragging = false; controls.enabled = true; };
+      const onMove = (e) => {
+        if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (mode === "twist" && pointers.size >= 2 && model) {
+          const a = twoFingerAngle();
+          model.rotation.y -= a - lastAngle;
+          lastAngle = a;
+        } else if (mode === "drag" && model) {
+          setNdc(e); ray.setFromCamera(ndc, camera);
+          if (ray.ray.intersectPlane(gp, hitPt)) {
+            model.position.x = Math.max(-half, Math.min(half, hitPt.x));
+            model.position.z = Math.max(-half, Math.min(half, hitPt.z));
+          }
+        }
+      };
+      const onUp = (e) => {
+        pointers.delete(e.pointerId);
+        if (pointers.size < 2 && mode === "twist") mode = null;
+        if (pointers.size === 0) mode = null;
+        if (mode === null) controls.enabled = true;
+      };
       const el = renderer.domElement;
       el.addEventListener("pointerdown", onDown);
       el.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
 
       const onResize = () => {
         const w = mount.clientWidth, h = mount.clientHeight;
@@ -131,6 +154,7 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
         cancelAnimationFrame(raf);
         window.removeEventListener("resize", onResize);
         window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
         el.removeEventListener("pointerdown", onDown);
         el.removeEventListener("pointermove", onMove);
         controls.dispose();
