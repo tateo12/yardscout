@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import Parcel3D from "./Parcel3D";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
@@ -149,6 +150,7 @@ export default function App() {
   const [capped, setCapped] = useState(false);
   const [expanded, setExpanded] = useState(() => new Set());
   const [arReady, setArReady] = useState(false);
+  const [show3D, setShow3D] = useState(null);
   const [settings, setSettings] = useState(() => {
     try { return { ...DEFAULT_SETTINGS, ...(JSON.parse(localStorage.getItem(SET_KEY)) || {}) }; } catch { return DEFAULT_SETTINGS; }
   });
@@ -439,6 +441,14 @@ export default function App() {
                 <div><b>{(sel.BLDG_SQFT || 0).toLocaleString()}</b><span>house sqft</span></div>
                 <div><b>{Math.round((sel.PARCEL_ACRES || 0) * SQFT_PER_ACRE - (sel.BLDG_SQFT || 0)).toLocaleString()}</b><span>open sqft</span></div>
               </div>
+              <button className="lot3d" onClick={() => {
+                const lyr = idToLayer.current[sel._key]; if (!lyr) return;
+                const b = lyr.getBounds(), c = b.getCenter();
+                const latM = (b.getNorth() - b.getSouth()) * 111320;
+                const lngM = (b.getEast() - b.getWest()) * 111320 * Math.cos(c.lat * Math.PI / 180);
+                const groundMeters = Math.max(latM, lngM, 12) * 1.8;
+                setShow3D({ center: { lat: c.lat, lng: c.lng }, groundMeters, modelUrl: `${import.meta.env.BASE_URL}models/${modelName}.glb`, label: sel.PARCEL_ADD || "Parcel" });
+              }}>View on the lot in 3D</button>
               <div className="dlabel">Log a knock</div>
               <div className="outcomes">
                 {OUTCOMES.map((o) => (
@@ -662,6 +672,10 @@ export default function App() {
           </section>
         )}
       </div>
+
+      {show3D && (
+        <Parcel3D center={show3D.center} groundMeters={show3D.groundMeters} modelUrl={show3D.modelUrl} label={show3D.label} onClose={() => setShow3D(null)} />
+      )}
 
       <nav className="bottomnav">
         {TABS.map((t) => (

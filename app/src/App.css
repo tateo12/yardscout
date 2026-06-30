@@ -57,6 +57,15 @@
 .obtn { border: 1px solid var(--line); background: #fff; border-radius: 9px; padding: 8px 11px; font-size: 12px; font-weight: 600; cursor: pointer; color: #2b3140; font-family: inherit; }
 .obtn:active { transform: scale(.97); }
 .custfields { display: flex; flex-direction: column; gap: 8px; margin-top: 13px; }
+.lot3d { width: 100%; border: 0; background: var(--graphite); color: #fff; font-weight: 700; font-size: 13px; padding: 11px; border-radius: 10px; cursor: pointer; font-family: inherit; margin: 8px 0 2px; }
+
+/* per-parcel 3D scene */
+.p3d { position: fixed; inset: 0; z-index: 3000; background: #0e1116; }
+.p3d-canvas { position: absolute; inset: 0; }
+.p3d-canvas canvas { display: block; width: 100% !important; height: 100% !important; }
+.p3d-close { position: absolute; top: calc(env(safe-area-inset-top) + 10px); right: 14px; z-index: 3001; width: 42px; height: 42px; border-radius: 50%; border: 0; background: rgba(15,22,35,.85); color: #fff; font-size: 24px; line-height: 1; cursor: pointer; }
+.p3d-label { position: absolute; left: 14px; bottom: calc(env(safe-area-inset-bottom) + 16px); z-index: 3001; color: #fff; font-weight: 700; font-size: 15px; text-shadow: 0 1px 5px rgba(0,0,0,.8); pointer-events: none; }
+.p3d-label small { display: block; font-weight: 500; font-size: 11px; color: #d2d8df; margin-top: 3px; }
 .arbox { margin-top: 14px; }
 .arbtn { width: 100%; border: 0; background: var(--graphite); color: #fff; font-weight: 700; font-size: 13px; padding: 12px; border-radius: 10px; cursor: pointer; font-family: inherit; }
 .arnote { font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 7px; }
