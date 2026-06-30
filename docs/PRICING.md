@@ -4,19 +4,19 @@
 
 | Item | Price |
 |------|-------|
-| One-time setup / onboarding | **$299** |
+| Setup / onboarding | **Free** |
 | First month | **$49 / rep** |
 | Standard, month 2+ | **$89 / rep / mo** (**$74 / rep** billed annually) |
 | Pause & restart | **Free** |
 | Seat minimum | none |
 
-**Example (3-rep shop):** $299 once + ~$147 month one, then ~$267/mo.
+**Example (3-rep shop):** ~$147 month one, then ~$267/mo. No setup fee.
 
 ### Why these numbers
 - **Per-seat, not commission** (manufactured-home commission rules + attribution problems make a cut of the sale legally/practically messy).
 - **$89/seat** sits above generic canvassing tools ($49–75) because the fit-map + AR are deal-closing features no competitor combines; value anchor = one extra placement is worth thousands, so a seat is a rounding error *if it lifts close rate*.
 - **$49 first month** = low-friction entry to prove value before full price.
-- **$299 setup** covers real onboarding work (county parcel-data setup, org/seat config, training); small enough for an established family shop, far from the $1,500 "enterprise implementation" number that was rejected.
+- **No setup fee** — keeps the door wide open for the first dealers; onboarding is part of landing the logo, not a line item. (Removed the earlier $299 setup.)
 - **Free pause/restart** — the business is seasonal; charging to come back punishes the loyal customer. (Killed the earlier $200 reactivation fee — simulated buyers were unanimous against it.)
 
 ## Target customer (ICP)
