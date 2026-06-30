@@ -96,35 +96,34 @@ alter table customers enable row level security;
 alter table knocks    enable row level security;
 alter table invites   enable row level security;
 
--- orgs: members read their org; owner updates billing/name. (status changes are manual in 1a / webhook in 1b)
+-- one policy per line (paste-proof), with drop-if-exists so the whole script is safe to re-run.
+drop policy if exists orgs_select on orgs;
 create policy orgs_select on orgs for select using (id = app_org_id());
-create policy orgs_update on orgs for update using (id = app_org_id() and app_is_owner())
-  with check (id = app_org_id());
+drop policy if exists orgs_update on orgs;
+create policy orgs_update on orgs for update using (id = app_org_id() and app_is_owner()) with check (id = app_org_id());
 
--- profiles: read profiles in your org; update only your own row. inserts happen via RPC only.
+drop policy if exists profiles_select on profiles;
 create policy profiles_select on profiles for select using (org_id = app_org_id());
+drop policy if exists profiles_update on profiles;
 create policy profiles_update on profiles for update using (id = auth.uid()) with check (id = auth.uid());
 
--- customers: org members, only while the org is active; soft-delete only (no delete policy = hard delete denied)
-create policy customers_select on customers for select
-  using (org_id = app_org_id() and app_org_active());
-create policy customers_insert on customers for insert
-  with check (org_id = app_org_id() and app_org_active());
-create policy customers_update on customers for update
-  using (org_id = app_org_id() and app_org_active())
-  with check (org_id = app_org_id());
+drop policy if exists customers_select on customers;
+create policy customers_select on customers for select using (org_id = app_org_id() and app_org_active());
+drop policy if exists customers_insert on customers;
+create policy customers_insert on customers for insert with check (org_id = app_org_id() and app_org_active());
+drop policy if exists customers_update on customers;
+create policy customers_update on customers for update using (org_id = app_org_id() and app_org_active()) with check (org_id = app_org_id());
 
--- knocks: same rules
-create policy knocks_select on knocks for select
-  using (org_id = app_org_id() and app_org_active());
-create policy knocks_insert on knocks for insert
-  with check (org_id = app_org_id() and app_org_active());
-create policy knocks_update on knocks for update
-  using (org_id = app_org_id() and app_org_active())
-  with check (org_id = app_org_id());
+drop policy if exists knocks_select on knocks;
+create policy knocks_select on knocks for select using (org_id = app_org_id() and app_org_active());
+drop policy if exists knocks_insert on knocks;
+create policy knocks_insert on knocks for insert with check (org_id = app_org_id() and app_org_active());
+drop policy if exists knocks_update on knocks;
+create policy knocks_update on knocks for update using (org_id = app_org_id() and app_org_active()) with check (org_id = app_org_id());
 
--- invites: only the owner sees/creates them. acceptance is via RPC.
+drop policy if exists invites_owner_select on invites;
 create policy invites_owner_select on invites for select using (org_id = app_org_id() and app_is_owner());
+drop policy if exists invites_owner_insert on invites;
 create policy invites_owner_insert on invites for insert with check (org_id = app_org_id() and app_is_owner());
 
 -- ---------- RPCs for the risky write paths ----------
