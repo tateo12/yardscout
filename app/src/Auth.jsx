@@ -1,9 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "./lib/supabase";
 import "./Auth.css";
 
 const DISCLAIMER_VERSION = 1;
 const inviteToken = new URLSearchParams(window.location.search).get("invite");
+
+// stable per-browser device id (tabs in the same browser share it; a different device differs)
+function deviceId() {
+  let id = localStorage.getItem("ys_device");
+  if (!id) { id = crypto.randomUUID(); localStorage.setItem("ys_device", id); }
+  return id;
+}
 
 // Gate: renders children({profile, signOut}) only when logged in, in an org, disclaimer accepted, org active.
 export default function Auth({ children }) {
@@ -30,8 +37,25 @@ export default function Auth({ children }) {
 
   const signOut = () => supabase.auth.signOut();
 
+  // single session per user: claim this device; if another device claims it, sign out here.
+  const [kicked, setKicked] = useState(false);
+  useEffect(() => {
+    if (!session || !profile) return;
+    const uid = session.user.id;
+    const me = deviceId();
+    supabase.from("profiles").update({ active_session: me }).eq("id", uid);
+    const ch = supabase
+      .channel(`sess-${uid}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${uid}` },
+        (payload) => {
+          if (payload.new.active_session && payload.new.active_session !== me) { setKicked(true); supabase.auth.signOut(); }
+        })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [session, profile?.id]);
+
   if (session === undefined || (session && profile === undefined)) return <Splash />;
-  if (!session) return <AuthScreen />;
+  if (!session) return <AuthScreen kicked={kicked} />;
   if (!profile) return <Onboarding session={session} onDone={() => loadProfile(session.user.id)} signOut={signOut} />;
   if (!profile.disclaimer_accepted_at) return <DisclaimerGate onAccept={() => loadProfile(session.user.id)} signOut={signOut} />;
   if (!["active", "trialing"].includes(profile.org?.subscription_status))
@@ -43,7 +67,7 @@ function Splash() {
   return <div className="auth"><div className="auth-card"><div className="auth-logo">▦ Yardscout</div><div className="auth-spin" /></div></div>;
 }
 
-function AuthScreen() {
+function AuthScreen({ kicked }) {
   const [mode, setMode] = useState("login"); // login | signup | reset
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
@@ -75,6 +99,7 @@ function AuthScreen() {
       <form className="auth-card" onSubmit={submit}>
         <div className="auth-logo">▦ Yardscout</div>
         <div className="auth-sub">{inviteToken ? "Sign in to join your team" : mode === "signup" ? "Create your account" : "Sign in"}</div>
+        {kicked && <div className="auth-msg">You were signed out because your account was opened on another device.</div>}
         <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
         {mode !== "reset" && <input type="password" placeholder="Password" value={pw} onChange={(e) => setPw(e.target.value)} required autoComplete={mode === "signup" ? "new-password" : "current-password"} minLength={6} />}
         <button className="auth-btn" disabled={busy}>{busy ? "…" : mode === "signup" ? "Sign up" : mode === "reset" ? "Send reset link" : "Log in"}</button>

@@ -24,9 +24,16 @@ create table if not exists profiles (
   role text not null default 'rep' check (role in ('owner','rep')),
   name text,
   disclaimer_accepted_at timestamptz,
+  active_session uuid,            -- single-session enforcement: the one device currently signed in
   created_at timestamptz not null default now()
 );
 create index if not exists profiles_org_idx on profiles(org_id);
+-- for existing installs:
+alter table profiles add column if not exists active_session uuid;
+-- realtime for shared data + single-session signal
+do $$ begin
+  alter publication supabase_realtime add table profiles, customers, knocks;
+exception when duplicate_object then null; end $$;
 
 create table if not exists customers (
   id uuid primary key default gen_random_uuid(),

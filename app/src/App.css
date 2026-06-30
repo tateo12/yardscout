@@ -65,6 +65,8 @@
 .p3d-canvas { position: absolute; inset: 0; }
 .p3d-canvas canvas { display: block; width: 100% !important; height: 100% !important; }
 .p3d-close { position: absolute; top: calc(env(safe-area-inset-top) + 10px); right: 14px; z-index: 3001; width: 42px; height: 42px; border-radius: 50%; border: 0; background: rgba(15,22,35,.85); color: #fff; font-size: 24px; line-height: 1; cursor: pointer; }
+.p3d-rotate { position: absolute; right: 14px; bottom: calc(env(safe-area-inset-bottom) + 64px); z-index: 3001; display: flex; gap: 10px; }
+.p3d-rotate button { width: 48px; height: 48px; border-radius: 50%; border: 0; background: rgba(15,22,35,.85); color: #fff; font-size: 24px; line-height: 1; cursor: pointer; }
 .p3d-label { position: absolute; left: 14px; bottom: calc(env(safe-area-inset-bottom) + 16px); z-index: 3001; color: #fff; font-weight: 700; font-size: 15px; text-shadow: 0 1px 5px rgba(0,0,0,.8); pointer-events: none; }
 .p3d-label small { display: block; font-weight: 500; font-size: 11px; color: #d2d8df; margin-top: 3px; }
 .arbox { margin-top: 14px; }

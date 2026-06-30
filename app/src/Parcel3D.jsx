@@ -15,6 +15,8 @@ function esriExport(bbox, size) {
 // Full-screen per-parcel 3D scene: the trailer at real scale on that lot's satellite ground.
 export default function Parcel3D({ center, groundMeters, modelUrl, label, onClose }) {
   const mountRef = useRef(null);
+  const modelRef = useRef(null);
+  const rotate = (dir) => { const m = modelRef.current; if (m) m.rotation.y += dir * Math.PI / 12; }; // 15° per tap
 
   useEffect(() => {
     let cleanup = () => {};
@@ -74,6 +76,7 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
         gltf.scene.position.z = groundMeters * 0.18;
         scene.add(gltf.scene);
         model = gltf.scene;
+        modelRef.current = model;
       } catch { /* model fails -> still show ground */ }
 
       const controls = new OrbitControls(camera, renderer.domElement);
@@ -132,6 +135,7 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
         el.removeEventListener("pointermove", onMove);
         controls.dispose();
         renderer.dispose();
+        modelRef.current = null;
         if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
       };
     })();
@@ -142,7 +146,11 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
     <div className="p3d">
       <div className="p3d-canvas" ref={mountRef} />
       <button className="p3d-close" onClick={onClose} aria-label="Close">×</button>
-      <div className="p3d-label">{label}<small>Drag the trailer to place it · drag empty space to orbit · pinch to zoom</small></div>
+      <div className="p3d-rotate">
+        <button onClick={() => rotate(-1)} aria-label="Rotate left">⟲</button>
+        <button onClick={() => rotate(1)} aria-label="Rotate right">⟳</button>
+      </div>
+      <div className="p3d-label">{label}<small>Drag the trailer to place it · ⟲ ⟳ to rotate · drag empty space to orbit · pinch to zoom</small></div>
     </div>
   );
 }
