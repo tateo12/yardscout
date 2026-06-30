@@ -441,6 +441,7 @@ export default function App() {
                 <div><b>{(sel.BLDG_SQFT || 0).toLocaleString()}</b><span>house sqft</span></div>
                 <div><b>{Math.round((sel.PARCEL_ACRES || 0) * SQFT_PER_ACRE - (sel.BLDG_SQFT || 0)).toLocaleString()}</b><span>open sqft</span></div>
               </div>
+              <div className="disclaim">Estimate from county data — verify on site before committing.</div>
               <button className="lot3d" onClick={() => {
                 const lyr = idToLayer.current[sel._key]; if (!lyr) return;
                 const b = lyr.getBounds(), c = b.getCenter();
