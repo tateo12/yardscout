@@ -185,6 +185,20 @@ export default function App({ profile, signOut } = {}) {
     const layer = layerRef.current;
     if (layer) layer.eachLayer((lyr) => lyr.setStyle(styleFor(lyr.feature, settingsRef.current)));
   };
+  // data ownership: export the customer list as CSV
+  const exportCsv = () => {
+    const cols = ["status", "name", "phone", "email", "addr", "city", "method", "date", "price", "notes"];
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lines = [cols.join(",")];
+    customers.forEach((c) => {
+      const rec = { ...c, status: STAT[c.outcome]?.label || c.outcome || "" };
+      lines.push(cols.map((k) => esc(rec[k])).join(","));
+    });
+    const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = "yardscout-customers.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const renderParcels = useCallback((rawFeatures) => {
     const map = mapRef.current;
@@ -678,6 +692,7 @@ export default function App({ profile, signOut } = {}) {
 
               <div className="phd">Data</div>
               <div className="setbtns">
+                <button className="ghostbtn" onClick={exportCsv}>Export customers (CSV)</button>
                 <button className="ghostbtn" onClick={resetSettings}>Reset settings to defaults</button>
                 <button className="dangerbtn" onClick={clearData}>Clear all customers &amp; knocks</button>
               </div>
