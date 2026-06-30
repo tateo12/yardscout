@@ -65,12 +65,15 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
       ground.receiveShadow = true;
       scene.add(ground);
 
-      // trailer (real-scale GLB, bottom at y=0)
+      // trailer (real-scale GLB, bottom at y=0). Start off-center so it isn't dropped on the house.
+      let model = null;
       try {
         const gltf = await new GLTFLoader().loadAsync(modelUrl);
         if (cancelled) return;
         gltf.scene.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        gltf.scene.position.z = groundMeters * 0.18;
         scene.add(gltf.scene);
+        model = gltf.scene;
       } catch { /* model fails -> still show ground */ }
 
       const controls = new OrbitControls(camera, renderer.domElement);
@@ -79,6 +82,37 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
       controls.maxPolarAngle = Math.PI * 0.495; // can't go under the ground
       controls.minDistance = 3;
       controls.maxDistance = groundMeters * 3;
+
+      // drag the trailer across the lot (grab the model = move it; drag empty space = orbit)
+      const ray = new THREE.Raycaster();
+      const ndc = new THREE.Vector2();
+      const gp = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const hitPt = new THREE.Vector3();
+      const half = groundMeters / 2;
+      let dragging = false;
+      const setNdc = (e) => {
+        const r = renderer.domElement.getBoundingClientRect();
+        ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+        ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+      };
+      const onDown = (e) => {
+        if (!model) return;
+        setNdc(e); ray.setFromCamera(ndc, camera);
+        if (ray.intersectObject(model, true).length) { dragging = true; controls.enabled = false; }
+      };
+      const onMove = (e) => {
+        if (!dragging || !model) return;
+        setNdc(e); ray.setFromCamera(ndc, camera);
+        if (ray.ray.intersectPlane(gp, hitPt)) {
+          model.position.x = Math.max(-half, Math.min(half, hitPt.x));
+          model.position.z = Math.max(-half, Math.min(half, hitPt.z));
+        }
+      };
+      const onUp = () => { dragging = false; controls.enabled = true; };
+      const el = renderer.domElement;
+      el.addEventListener("pointerdown", onDown);
+      el.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
 
       const onResize = () => {
         const w = mount.clientWidth, h = mount.clientHeight;
@@ -93,6 +127,9 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
       cleanup = () => {
         cancelAnimationFrame(raf);
         window.removeEventListener("resize", onResize);
+        window.removeEventListener("pointerup", onUp);
+        el.removeEventListener("pointerdown", onDown);
+        el.removeEventListener("pointermove", onMove);
         controls.dispose();
         renderer.dispose();
         if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
@@ -105,7 +142,7 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
     <div className="p3d">
       <div className="p3d-canvas" ref={mountRef} />
       <button className="p3d-close" onClick={onClose} aria-label="Close">×</button>
-      <div className="p3d-label">{label}<small>Drag to orbit · pinch/scroll to zoom · two-finger drag to tilt</small></div>
+      <div className="p3d-label">{label}<small>Drag the trailer to place it · drag empty space to orbit · pinch to zoom</small></div>
     </div>
   );
 }
