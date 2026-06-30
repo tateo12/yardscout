@@ -104,14 +104,24 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
         const [a, b] = [...pointers.values()];
         return Math.atan2(b.y - a.y, b.x - a.x);
       };
+      const hitsModel = (px, py) => {
+        if (!model) return false;
+        const r = renderer.domElement.getBoundingClientRect();
+        ndc.x = ((px - r.left) / r.width) * 2 - 1;
+        ndc.y = -((py - r.top) / r.height) * 2 + 1;
+        ray.setFromCamera(ndc, camera);
+        return ray.intersectObject(model, true).length > 0;
+      };
       const onDown = (e) => {
         pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (pointers.size === 2) {
-          mode = "twist"; controls.enabled = false; lastAngle = twoFingerAngle();
-        } else if (pointers.size === 1 && model) {
-          setNdc(e); ray.setFromCamera(ndc, camera);
-          if (ray.intersectObject(model, true).length) { mode = "drag"; controls.enabled = false; }
-          else mode = null; // empty space -> camera orbit (OrbitControls)
+          const pts = [...pointers.values()];
+          if (hitsModel(pts[0].x, pts[0].y) || hitsModel(pts[1].x, pts[1].y)) {
+            mode = "twist"; controls.enabled = false; lastAngle = twoFingerAngle(); // two fingers on trailer -> rotate
+          } else { mode = null; controls.enabled = true; } // two fingers on map -> OrbitControls pinch-zoom
+        } else if (pointers.size === 1) {
+          if (hitsModel(e.clientX, e.clientY)) { mode = "drag"; controls.enabled = false; } // one finger on trailer -> move
+          else { mode = null; controls.enabled = true; } // one finger on map -> orbit
         }
       };
       const onMove = (e) => {
