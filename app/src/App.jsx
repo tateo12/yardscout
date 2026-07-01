@@ -62,11 +62,11 @@ const TIER = {
   red:    { color: "#dd5145", label: "No room" },
 };
 const OUTCOMES = [
-  { key: "booked",         label: "Booked",         color: "#2563eb" },
-  { key: "interested",     label: "Interested",     color: "#0ca5b8" },
-  { key: "not_home",       label: "Not home",       color: "#a07b1d" },
-  { key: "not_interested", label: "Not interested", color: "#9aa1ab" },
-  { key: "blocked",        label: "Can't place",    color: "#4b5563" },
+  { key: "booked",         label: "Booked",         color: "#2563eb" },  // blue — the win
+  { key: "interested",     label: "Interested",     color: "#0ca5b8" },  // teal — warm lead
+  { key: "not_home",       label: "Not home",       color: "#f59e0b" },  // amber — come back later
+  { key: "not_interested", label: "Not interested", color: "#94a3b8" },  // gray — soft no
+  { key: "blocked",        label: "Can't place",    color: "#dc2626" },  // red — hard/physical no
 ];
 const OUT = Object.fromEntries(OUTCOMES.map((o) => [o.key, o]));
 const CUSTOMER_OUTCOMES = ["booked", "interested"];
@@ -111,7 +111,13 @@ const styleFor = (feat, s) => {
   const winner = p._fitStatus ? p._fitStatus === "fits" : p._tier === "green";
   if (!winner) return HIDDEN_STYLE;
   const c = p._fitColor || "#16b866";
-  return { color: "#ffffff", weight: 3, opacity: 1, fillColor: c, fillOpacity: 0.62 };  // white casing + vivid fill = pops on any satellite
+  return { color: c, weight: 2, opacity: 1, fillColor: darken(c), fillOpacity: 0.82 };  // same-hue border + darker solid fill = reads from a broad view
+};
+// darken a #rrggbb toward black by factor f (fill is a darker shade of the border color)
+const darken = (hex, f = 0.55) => {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.round(((n >> 16) & 255) * f), g = Math.round(((n >> 8) & 255) * f), b = Math.round((n & 255) * f);
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
 };
 // invisible fill so non-winners stay clickable (tap any house at a door) without cluttering the map
 const HIDDEN_STYLE = { stroke: false, fill: true, fillColor: "#16b866", fillOpacity: 0.001 };
@@ -255,7 +261,7 @@ export default function App({ profile, signOut } = {}) {
       markerByKey.current = {};
       const h = sizeForZoom(map.getZoom());
       Object.entries(knocksRef.current).forEach(([key, k]) => {
-        if (!CUSTOMER_OUTCOMES.includes(k.outcome)) return;
+        if (!OUT[k.outcome]) return;
         const poly = idToLayer.current[key];
         if (!poly) return;
         const m = L.marker(poly.getBounds().getCenter(), { icon: flagIcon(STAT[k.outcome].color, h) });
@@ -374,7 +380,7 @@ export default function App({ profile, signOut } = {}) {
     rawFeatures.forEach((f) => {
       const p = f.properties;
       const k = knocksRef.current[p._key];
-      if (!(k && CUSTOMER_OUTCOMES.includes(k.outcome))) return;
+      if (!(k && OUT[k.outcome])) return;
       const poly = idToLayer.current[p._key];
       if (!poly) return;
       const m = L.marker(poly.getBounds().getCenter(), { icon: flagIcon(STAT[k.outcome].color, h) });
@@ -390,9 +396,9 @@ export default function App({ profile, signOut } = {}) {
     const map = mapRef.current, group = markersRef.current;
     if (!map || !group) return;
     const k = knocks[key];
-    const isCust = !!(k && CUSTOMER_OUTCOMES.includes(k.outcome));
+    const isKnock = !!(k && OUT[k.outcome]);   // flag drops for ANY logged outcome (knocking history), colored by outcome
     const existing = markerByKey.current[key];
-    if (isCust) {
+    if (isKnock) {
       const poly = idToLayer.current[key];
       if (!poly) return;
       const icon = flagIcon(STAT[k.outcome].color, sizeForZoom(map.getZoom()));
