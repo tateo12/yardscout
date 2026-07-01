@@ -3,6 +3,7 @@ import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
 import { computeParcelFit } from "./lib/geo";
 import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS } from "./lib/adu";
+import { sharePdf } from "./lib/share";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
@@ -167,6 +168,7 @@ export default function App({ profile, signOut } = {}) {
   const [show3D, setShow3D] = useState(null);
   const [aduFit, setAduFit] = useState(null);
   const [aduLoading, setAduLoading] = useState(false);
+  const [floorPlan, setFloorPlan] = useState(null);   // catalog model whose floor plan is open
   const [pull, setPull] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const pullRef = useRef(0);
@@ -624,12 +626,6 @@ export default function App({ profile, signOut } = {}) {
   const sel = selected != null ? features.find((p) => p._key === selected) : null;
   const selKnock = selected != null ? knocks[selected] : null;
 
-  // pick the box model closest to the configured trailer size
-  const modelName = useMemo(() => {
-    const a = settings.unitW * settings.unitL;
-    return PRESETS.reduce((b, pr) => (Math.abs(pr.w * pr.l - a) < Math.abs(b.w * b.l - a) ? pr : b)).key;
-  }, [settings.unitW, settings.unitL]);
-
   const TABS = [
     { key: "map", label: "Map" },
     { key: "trailer", label: "Trailer" },
@@ -681,10 +677,11 @@ export default function App({ profile, signOut } = {}) {
               <div className="dlabel">Which units fit</div>
               {aduLoading && <div className="fitrow muted">Checking the yard…</div>}
               {!aduLoading && aduFit?.status === "fits" && aduFit.fits.map((f) => (
-                <div className="fitrow ok" key={f.model.id}>
+                <button className="fitrow ok tap" key={f.model.id} onClick={() => f.model.floorPlan && setFloorPlan(f.model)}>
                   <span className="dot" />
-                  <b>{f.model.name}</b> · {Math.round(f.clearanceFt)} ft to spare · {f.method}
-                </div>
+                  <span className="fittxt"><b>{f.model.name}</b> · {Math.round(f.clearanceFt)} ft to spare · {f.method}</span>
+                  {f.model.floorPlan && <span className="chev">floor plan ›</span>}
+                </button>
               ))}
               {!aduLoading && aduFit?.status === "not-eligible" && (
                 <div className="fitrow no">Not eligible — lot is {Math.round(aduFit.lotSqft).toLocaleString()} sq ft, under the {settings.minLotSqft.toLocaleString()} sq ft minimum.</div>
@@ -703,7 +700,8 @@ export default function App({ profile, signOut } = {}) {
                 const groundMeters = Math.max(latM, lngM, 12) * 1.8;
                 const g = lyr.feature?.geometry;
                 const ring = g?.type === "MultiPolygon" ? g.coordinates[0][0] : g?.coordinates?.[0];
-                setShow3D({ center: { lat: c.lat, lng: c.lng }, groundMeters, ring, modelUrl: `${import.meta.env.BASE_URL}models/${modelName}.glb`, label: sel.PARCEL_ADD || "Parcel" });
+                const mdl = (aduFit?.best?.model || ADU_MODELS[0]).glb;
+                setShow3D({ center: { lat: c.lat, lng: c.lng }, groundMeters, ring, modelUrl: `${import.meta.env.BASE_URL}models/${mdl}.glb`, label: sel.PARCEL_ADD || "Parcel" });
               }}>View on the lot in 3D</button>
               <div className="dlabel">Fix the call {flags[sel._key] && <span className="corrected">rep-corrected</span>}</div>
               <div className="flagrow">
@@ -816,53 +814,34 @@ export default function App({ profile, signOut } = {}) {
         {tab === "trailer" && (
           <section className="panel padded">
             <div className="swrap">
-              <div className="phd">Your trailer</div>
-              {(() => {
-                const glb = `${import.meta.env.BASE_URL}models/${modelName}.glb`;
-                const usdz = `${import.meta.env.BASE_URL}models/${modelName}.usdz`;
+              <div className="phd">Your units</div>
+              {ADU_MODELS.map((m) => {
+                const glb = `${import.meta.env.BASE_URL}models/${m.glb}.glb`;
+                const usdz = `${import.meta.env.BASE_URL}models/${m.usdz}.usdz`;
                 const scene = `https://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(new URL(glb, window.location.href).href)}&mode=ar_preferred`;
                 return (
-                  <>
+                  <div className="unitcard" key={m.id}>
                     {arReady ? (
                       <model-viewer src={glb}
                         {...{ "camera-controls": "", "auto-rotate": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95", "interaction-prompt": "none", "camera-orbit": "-55deg 75deg auto", "min-camera-orbit": "auto 0deg auto", "max-camera-orbit": "auto 90deg auto" }}
-                        style={{ width: "100%", height: "330px", background: "#eef1f0", borderRadius: "14px" }}>
+                        style={{ width: "100%", height: "300px", background: "#eef1f0", borderRadius: "14px" }}>
                       </model-viewer>
                     ) : (
-                      <div className="mvload" style={{ height: "330px" }}><div className="spin" /></div>
+                      <div className="mvload" style={{ height: "300px" }}><div className="spin" /></div>
                     )}
-                    <div className="readout" style={{ marginTop: "12px" }}>
-                      <div><b>{settings.unitW}</b><span>width ft</span></div>
-                      <div><b>{settings.unitL}</b><span>length ft</span></div>
-                      <div><b>{settings.unitH}</b><span>height ft</span></div>
-                    </div>
-                    <div className="presets" style={{ marginTop: "12px" }}>
-                      {PRESETS.map((pr) => {
-                        const on = settings.unitW === pr.w && settings.unitL === pr.l;
-                        return (
-                          <button key={pr.key} className={"preset" + (on ? " on" : "")}
-                            onClick={() => setSettings((s) => ({ ...s, unitW: pr.w, unitL: pr.l, unitH: pr.h }))}>
-                            <b>{pr.label}</b><span>{pr.w} × {pr.l} ft</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="setrow" style={{ marginTop: "10px" }}>
-                      <label>Width (ft)<input type="number" min="1" value={settings.unitW} onChange={(e) => setSetting("unitW", Number(e.target.value) || 0)} /></label>
-                      <label>Length (ft)<input type="number" min="1" value={settings.unitL} onChange={(e) => setSetting("unitL", Number(e.target.value) || 0)} /></label>
-                      <label>Height (ft)<input type="number" min="1" value={settings.unitH} onChange={(e) => setSetting("unitH", Number(e.target.value) || 0)} /></label>
-                    </div>
+                    <div className="unithd"><b>{m.name}</b><span>{m.beds} bd · {m.baths} ba</span></div>
                     {IS_IOS ? (
-                      <a className="ar-anchor" style={{ marginTop: "14px" }} rel="ar" href={usdz}><img src={`${import.meta.env.BASE_URL}ar-poster.png`} alt="View in your yard" /></a>
+                      <a className="ar-anchor" style={{ marginTop: "12px" }} rel="ar" href={usdz}><img src={`${import.meta.env.BASE_URL}ar-poster.png`} alt="View in your yard" /></a>
                     ) : IS_ANDROID ? (
-                      <a className="ar-cta" style={{ marginTop: "14px" }} href={scene}>View in your yard</a>
+                      <a className="ar-cta" style={{ marginTop: "12px" }} href={scene}>View in your yard</a>
                     ) : (
-                      <div className="arnote">Spin the 3D model above on a computer. To place it in a real yard with the camera, open Yardscout on your phone — the camera view is phone-only.</div>
+                      <div className="arnote">Spin the 3D model on a computer. To place it in a real yard with the camera, open Yardscout on your phone.</div>
                     )}
-                    <p className="snote">Matches your {settings.unitW}×{settings.unitL} ft unit. Pick a preset or set the size above.</p>
-                  </>
+                    {m.floorPlan && <button className="ghostbtn full" style={{ marginTop: "10px" }} onClick={() => setFloorPlan(m)}>View floor plan</button>}
+                  </div>
                 );
-              })()}
+              })}
+              <p className="snote">More sizes and floor plans coming soon.</p>
             </div>
           </section>
         )}
@@ -989,6 +968,25 @@ export default function App({ profile, signOut } = {}) {
       {show3D && (
         <Parcel3D center={show3D.center} groundMeters={show3D.groundMeters} ring={show3D.ring} modelUrl={show3D.modelUrl} label={show3D.label} onClose={() => setShow3D(null)} />
       )}
+
+      {floorPlan && (() => {
+        const url = `${import.meta.env.BASE_URL}${floorPlan.floorPlan}`;
+        return (
+          <div className="fpv">
+            <div className="fpv-bar">
+              <b>{floorPlan.name} floor plan</b>
+              <div className="fpv-actions">
+                <button className="fpv-share" onClick={() => sharePdf(url, `yardscout-${floorPlan.id}-floorplan.pdf`, `${floorPlan.name} floor plan`)}>Share</button>
+                <a className="fpv-open" href={url} target="_blank" rel="noreferrer">Open</a>
+                <button className="fpv-close" onClick={() => setFloorPlan(null)} aria-label="Close">×</button>
+              </div>
+            </div>
+            <object className="fpv-doc" data={url} type="application/pdf">
+              <div className="fpv-fallback">Can’t preview here. <a href={url} target="_blank" rel="noreferrer">Open the floor plan</a>.</div>
+            </object>
+          </div>
+        );
+      })()}
 
       <nav className="bottomnav">
         {TABS.map((t) => (

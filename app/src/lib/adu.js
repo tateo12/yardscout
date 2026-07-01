@@ -2,7 +2,8 @@
 // (jurisdiction_profiles + org_settings). See docs/ADU_FIT_PLAN.md.
 
 export const ADU_MODELS = [
-  { id: "lafortune-40", name: "40′ × 13′4″", widthFt: 13.333, lengthFt: 40, beds: 1, baths: 1 },
+  { id: "lafortune-40", name: "40′ × 13′4″", widthFt: 13.333, lengthFt: 40, beds: 1, baths: 1,
+    glb: "single", usdz: "single", floorPlan: "floorplans/lafortune-40.pdf" },
 ];
 
 // Salt Lake County / Kearns profile (sourced from county code — verify; SB284 may change it).

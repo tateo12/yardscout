@@ -68,6 +68,29 @@
 .selrow select { font-family: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: #14181e; min-width: 45%; }
 .ptr { flex: none; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--graphite); color: #fff; }
 .ptr span { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; opacity: .9; }
+/* clickable fit row (opens floor plan) */
+.fitrow.tap { width: 100%; border: 0; cursor: pointer; text-align: left; justify-content: flex-start; font: inherit; }
+.fitrow .fittxt { flex: 1; }
+.fitrow .chev { font-size: 12px; font-weight: 700; color: #1fa36b; white-space: nowrap; }
+/* trailer-tab unit card */
+.unitcard { margin-bottom: 18px; }
+.unithd { display: flex; align-items: baseline; justify-content: space-between; margin-top: 12px; }
+.unithd b { font-size: 18px; }
+.unithd span { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+/* floor-plan viewer */
+.fpv { position: fixed; inset: 0; z-index: 3000; background: #14181e; display: flex; flex-direction: column; }
+.fpv-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; color: #fff; background: var(--graphite); }
+.fpv-bar b { font-size: 14px; }
+.fpv-actions { display: flex; align-items: center; gap: 8px; }
+.fpv-share, .fpv-open { border: 0; border-radius: 8px; padding: 8px 14px; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; }
+.fpv-share { background: #1fa36b; color: #fff; }
+.fpv-open { background: #2b3140; color: #fff; }
+.fpv-close { background: transparent; border: 0; color: #fff; font-size: 26px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.fpv-doc { flex: 1; width: 100%; border: 0; background: #333; }
+.fpv-fallback { color: #fff; padding: 24px; text-align: center; }
+.fpv-fallback a { color: #4fd39a; }
+/* share button on the 3D lot view */
+.p3d-share { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); border: 0; background: #1fa36b; color: #fff; font-weight: 700; font-size: 13px; padding: 10px 18px; border-radius: 999px; cursor: pointer; box-shadow: 0 3px 10px rgba(0,0,0,.35); }
 .custfields { display: flex; flex-direction: column; gap: 8px; margin-top: 13px; }
 .corrected { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--graphite); color: #fff; font-size: 9px; letter-spacing: .6px; vertical-align: middle; }
 .flagrow { display: flex; gap: 6px; }

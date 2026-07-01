@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { shareCanvas } from "./lib/share";
 
 // Web-Mercator (EPSG:3857) bbox covering `realHalf` meters around a lat/lng.
 function mercatorBbox(lat, lng, realHalf) {
@@ -16,7 +17,9 @@ function esriExport(bbox, size) {
 export default function Parcel3D({ center, groundMeters, ring, modelUrl, label, onClose }) {
   const mountRef = useRef(null);
   const modelRef = useRef(null);
+  const canvasRef = useRef(null);
   const rotate = (dir) => { const m = modelRef.current; if (m) m.rotation.y += dir * Math.PI / 12; }; // 15° per tap
+  const shareView = () => { if (canvasRef.current) shareCanvas(canvasRef.current, "yardscout-lot.png", `${label} — trailer in the yard`); };
 
   useEffect(() => {
     let cleanup = () => {};
@@ -38,7 +41,8 @@ export default function Parcel3D({ center, groundMeters, ring, modelUrl, label, 
       const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 5000);
       camera.position.set(groundMeters * 0.45, groundMeters * 0.55, groundMeters * 0.7);
 
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); // keep buffer for screenshots
+      canvasRef.current = renderer.domElement;
       renderer.setSize(W, H);
       renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
       renderer.shadowMap.enabled = true;
@@ -203,6 +207,7 @@ export default function Parcel3D({ center, groundMeters, ring, modelUrl, label, 
         <button onClick={() => rotate(-1)} aria-label="Rotate left">⟲</button>
         <button onClick={() => rotate(1)} aria-label="Rotate right">⟳</button>
       </div>
+      <button className="p3d-share" onClick={shareView}>Share this view</button>
       <div className="p3d-label">{label}<small>Yellow = property line · drag the trailer to place it · ⟲ ⟳ to rotate · drag empty space to orbit · pinch to zoom</small></div>
     </div>
   );
