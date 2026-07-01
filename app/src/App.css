@@ -45,7 +45,6 @@
 .detail { position: absolute; right: 12px; left: 12px; top: 12px; z-index: 700; max-width: 330px; margin-left: auto;
   background: var(--card); border-radius: 16px; box-shadow: 0 10px 34px rgba(0,0,0,.35); padding: 16px; }
 .detail .x { position: absolute; right: 10px; top: 8px; border: 0; background: transparent; font-size: 22px; line-height: 1; color: #aab; cursor: pointer; }
-.vchip { display: inline-block; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .3px; padding: 3px 10px; border-radius: 20px; }
 .daddr { font-size: 17px; font-weight: 700; letter-spacing: -.3px; margin: 9px 0 1px; }
 .dcity { font-family: var(--mono); font-size: 11px; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); }
 .readout { display: flex; gap: 8px; margin: 13px 0 4px; }
@@ -78,14 +77,9 @@
 .ptr { flex: none; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--graphite); color: #fff; }
 .ptr span { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; opacity: .9; }
 /* clickable fit row (opens floor plan) */
-.fitrow.tap { width: 100%; border: 0; cursor: pointer; text-align: left; justify-content: flex-start; font: inherit; }
 .fitrow .fittxt { flex: 1; }
-.fitrow .chev { font-size: 12px; font-weight: 700; color: #1fa36b; white-space: nowrap; }
+.fitrow .fittxt small { display: block; font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 2px; letter-spacing: .3px; }
 /* trailer-tab unit card */
-.unitcard { margin-bottom: 18px; }
-.unithd { display: flex; align-items: baseline; justify-content: space-between; margin-top: 12px; }
-.unithd b { font-size: 18px; }
-.unithd span { font-family: var(--mono); font-size: 12px; color: var(--muted); }
 /* floor-plan viewer */
 .fpv { position: fixed; inset: 0; z-index: 3000; background: #14181e; display: flex; flex-direction: column; }
 .fpv-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; color: #fff; background: var(--graphite); }
@@ -134,6 +128,21 @@
 .cred a { color: #9aa3ab; }
 .mvload { display: flex; align-items: center; justify-content: center; background: #eef1f0; border-radius: 14px; }
 .mvload .spin { border-color: rgba(0,0,0,.15); border-top-color: var(--green); }
+
+/* Trailer tab: compact unit list; 3D + floor plan reveal only on tap */
+.unitrow { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px; background: var(--card); overflow: hidden; }
+.unitrow.open { border-color: #cbd3da; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+.unitrow-hd { width: 100%; display: flex; align-items: center; gap: 10px; padding: 14px; background: none; border: 0; cursor: pointer; font: inherit; text-align: left; color: var(--text); }
+.unitrow-main { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.unitrow-main b { font-size: 15px; font-weight: 700; letter-spacing: -.2px; }
+.unitrow-main small { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: .3px; }
+.unitrow-chev { font-size: 13px; color: var(--muted); }
+.unitrow-body { padding: 0 14px 14px; }
+
+/* map: reload owner data for the current viewport */
+.ownerctl { position: absolute; left: 50%; transform: translateX(-50%); bottom: 58px; z-index: 600; display: flex; align-items: center; gap: 8px; }
+.ownerctl button { background: rgba(20,24,30,.9); backdrop-filter: blur(6px); color: #e7ecf1; border: 1px solid rgba(255,255,255,.14); border-radius: 20px; padding: 7px 13px; font-family: inherit; font-weight: 600; font-size: 12px; cursor: pointer; }
+.ownerctl-warn { background: rgba(184,80,20,.94); color: #fff; font-size: 11px; font-weight: 600; padding: 6px 10px; border-radius: 20px; }
 
 /* ---- customers ---- */
 .custhd { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--card); border-bottom: 1px solid var(--line); }

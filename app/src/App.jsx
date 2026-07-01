@@ -209,6 +209,8 @@ export default function App({ profile, signOut } = {}) {
   const [aduFit, setAduFit] = useState(null);
   const [aduLoading, setAduLoading] = useState(false);
   const [floorPlan, setFloorPlan] = useState(null);   // catalog model whose floor plan is open
+  const [openModel, setOpenModel] = useState(null);   // Trailer tab: which unit is expanded (3D loads only when open)
+  const [ownerPartial, setOwnerPartial] = useState(false);  // last owner fetch couldn't reach some lots (county server)
   const [pull, setPull] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const pullRef = useRef(0);
@@ -486,6 +488,7 @@ export default function App({ profile, signOut } = {}) {
     let raw;
     try { raw = await fetchOwnership(need); } catch { return; }
     if (token !== ownerToken.current || !layerRef.current) return;   // a newer move superseded this
+    setOwnerPartial(!!raw.partial);   // some chunks failed -> tell the user it's incomplete
     const nd = new Date();
     raw.forEach((attrs, id) => ownerCacheRef.current.set(id, toOwnerRecord(attrs, nd)));
     layerRef.current.eachLayer((l) => {
@@ -495,6 +498,15 @@ export default function App({ profile, signOut } = {}) {
     persistOwners();
     setOwnerVer((v) => v + 1);
   }, []);
+
+  // manual "refresh this area": drop the viewport's cached owner records and re-pull (for stale data or a prior partial load)
+  const refreshOwners = useCallback(() => {
+    const layer = layerRef.current; if (!layer) return;
+    layer.eachLayer((l) => ownerCacheRef.current.delete(l.feature.properties._key));
+    persistOwners();
+    setOwnerPartial(false);
+    computeOwners();
+  }, [computeOwners]);
 
   const loadViewport = useCallback(() => {
     const map = mapRef.current;
@@ -827,10 +839,15 @@ export default function App({ profile, signOut } = {}) {
             <span><i style={{ background: EQ.warm.color }} />Warm</span>
             <span><i style={{ background: EQ.cool.color }} />Lower</span>
           </div>
+          {!zoomedOut && (
+            <div className="ownerctl">
+              {ownerPartial && <span className="ownerctl-warn">Some owner data didn’t load</span>}
+              <button onClick={refreshOwners} title="Reload owner data for this area">↻ Refresh owners</button>
+            </div>
+          )}
           {sel && (
             <div className="detail">
               <button className="x" onClick={() => setSelected(null)} aria-label="Close">×</button>
-              <div className="vchip" style={{ background: TIER[sel._tier].color }}>{TIER[sel._tier].label}</div>
               <div className="daddr">{sel.PARCEL_ADD || "(no address)"}</div>
               <div className="dcity">{sel.PARCEL_CITY}</div>
               <div className="readout">
@@ -855,12 +872,17 @@ export default function App({ profile, signOut } = {}) {
               )}
               <div className="dlabel">Which units fit</div>
               {aduLoading && <div className="fitrow muted">Checking the yard…</div>}
-              {!aduLoading && aduFit?.status === "fits" && aduFit.fits.map((f) => (
-                <button className="fitrow ok tap" key={f.model.id} onClick={() => f.model.floorPlan && setFloorPlan(f.model)}>
+              {!aduLoading && aduFit?.status === "fits" && Object.values(aduFit.fits.reduce((acc, f) => {
+                const k = `${f.model.widthFt}x${f.model.lengthFt}`;   // one row per distinct footprint (dupes collapse)
+                if (!acc[k]) acc[k] = { key: k, w: f.model.widthFt, l: f.model.lengthFt, clearanceFt: f.clearanceFt, method: f.method, names: [] };
+                else if (f.clearanceFt > acc[k].clearanceFt) { acc[k].clearanceFt = f.clearanceFt; acc[k].method = f.method; }  // keep the group's best
+                acc[k].names.push(f.model.name.replace(/\s*\(.*\)/, ""));
+                return acc;
+              }, {})).map((g) => (
+                <div className="fitrow ok" key={g.key}>
                   <span className="dot" />
-                  <span className="fittxt"><b>{f.model.name}</b> · {Math.round(f.clearanceFt)} ft to spare · {f.method}</span>
-                  {f.model.floorPlan && <span className="chev">floor plan ›</span>}
-                </button>
+                  <span className="fittxt"><b>{ftIn(g.w)} × {ftIn(g.l)}</b> · {Math.round(g.clearanceFt)} ft to spare · {g.method}<small>{g.names.join(", ")}</small></span>
+                </div>
               ))}
               {!aduLoading && aduFit?.status === "not-eligible" && (
                 <div className="fitrow no">Not eligible — lot is {Math.round(aduFit.lotSqft).toLocaleString()} sq ft, under the {settings.minLotSqft.toLocaleString()} sq ft minimum.</div>
@@ -993,35 +1015,40 @@ export default function App({ profile, signOut } = {}) {
                 const glb = `${import.meta.env.BASE_URL}models/${m.glb}.glb`;
                 const usdz = `${import.meta.env.BASE_URL}models/${m.usdz}.usdz`;
                 const scene = `https://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(new URL(glb, window.location.href).href)}&mode=ar_preferred`;
+                const open = openModel === m.id;
                 return (
-                  <div className="unitcard" key={m.id}>
-                    {arReady ? (
-                      <model-viewer src={glb}
-                        {...{ "camera-controls": "", "auto-rotate": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95", "interaction-prompt": "none", "camera-orbit": "-55deg 75deg auto", "min-camera-orbit": "auto 0deg auto", "max-camera-orbit": "auto 90deg auto" }}
-                        style={{ width: "100%", height: "300px", background: "#eef1f0", borderRadius: "14px" }}>
-                      </model-viewer>
-                    ) : (
-                      <div className="mvload" style={{ height: "300px" }}><div className="spin" /></div>
+                  <div className={"unitrow" + (open ? " open" : "")} key={m.id}>
+                    <button className="unitrow-hd" onClick={() => setOpenModel(open ? null : m.id)} aria-expanded={open}>
+                      <span className="unitrow-main">
+                        <b>{m.name}</b>
+                        <small>{ftIn(m.widthFt)} × {ftIn(m.lengthFt)} · {m.beds} bd / {m.baths} ba · {Math.round(m.widthFt * m.lengthFt).toLocaleString()} sq ft</small>
+                      </span>
+                      <span className="unitrow-chev">{open ? "▾" : "▸"}</span>
+                    </button>
+                    {open && (
+                      <div className="unitrow-body">
+                        {arReady ? (
+                          <model-viewer src={glb}
+                            {...{ "camera-controls": "", "auto-rotate": "", "touch-action": "pan-y", "shadow-intensity": "1", exposure: "0.95", "interaction-prompt": "none", "camera-orbit": "-55deg 75deg auto", "min-camera-orbit": "auto 0deg auto", "max-camera-orbit": "auto 90deg auto" }}
+                            style={{ width: "100%", height: "280px", background: "#eef1f0", borderRadius: "14px" }}>
+                          </model-viewer>
+                        ) : (
+                          <div className="mvload" style={{ height: "280px" }}><div className="spin" /></div>
+                        )}
+                        {IS_IOS ? (
+                          <a className="ar-anchor" style={{ marginTop: "12px" }} rel="ar" href={usdz}><img src={`${import.meta.env.BASE_URL}ar-poster.png`} alt="View in your yard" /></a>
+                        ) : IS_ANDROID ? (
+                          <a className="ar-cta" style={{ marginTop: "12px" }} href={scene}>View in your yard</a>
+                        ) : (
+                          <div className="arnote">Spin the 3D model on a computer. To place it in a real yard with the camera, open Yardscout on your phone.</div>
+                        )}
+                        {m.floorPlan && <button className="ghostbtn full" style={{ marginTop: "10px" }} onClick={() => setFloorPlan(m)}>View floor plan</button>}
+                      </div>
                     )}
-                    <div className="unithd"><b>{m.name}</b><span>{m.beds} bed · {m.baths} bath</span></div>
-                    <div className="readout" style={{ marginTop: "12px" }}>
-                      <div><b>{ftIn(m.widthFt)}</b><span>width</span></div>
-                      <div><b>{ftIn(m.lengthFt)}</b><span>length</span></div>
-                      <div><b>{ftIn(m.heightFt)}</b><span>height</span></div>
-                    </div>
-                    <p className="snote" style={{ marginTop: "8px" }}>≈ {Math.round(m.widthFt * m.lengthFt).toLocaleString()} sq ft footprint.</p>
-                    {IS_IOS ? (
-                      <a className="ar-anchor" style={{ marginTop: "12px" }} rel="ar" href={usdz}><img src={`${import.meta.env.BASE_URL}ar-poster.png`} alt="View in your yard" /></a>
-                    ) : IS_ANDROID ? (
-                      <a className="ar-cta" style={{ marginTop: "12px" }} href={scene}>View in your yard</a>
-                    ) : (
-                      <div className="arnote">Spin the 3D model on a computer. To place it in a real yard with the camera, open Yardscout on your phone.</div>
-                    )}
-                    {m.floorPlan && <button className="ghostbtn full" style={{ marginTop: "10px" }} onClick={() => setFloorPlan(m)}>View floor plan</button>}
                   </div>
                 );
               })}
-              <p className="snote">More sizes and floor plans coming soon.</p>
+              <p className="snote">Tap a unit to see it in 3D and open its floor plan.</p>
             </div>
           </section>
         )}
