@@ -652,7 +652,9 @@ export default function App({ profile, signOut } = {}) {
                 const latM = (b.getNorth() - b.getSouth()) * 111320;
                 const lngM = (b.getEast() - b.getWest()) * 111320 * Math.cos(c.lat * Math.PI / 180);
                 const groundMeters = Math.max(latM, lngM, 12) * 1.8;
-                setShow3D({ center: { lat: c.lat, lng: c.lng }, groundMeters, modelUrl: `${import.meta.env.BASE_URL}models/${modelName}.glb`, label: sel.PARCEL_ADD || "Parcel" });
+                const g = lyr.feature?.geometry;
+                const ring = g?.type === "MultiPolygon" ? g.coordinates[0][0] : g?.coordinates?.[0];
+                setShow3D({ center: { lat: c.lat, lng: c.lng }, groundMeters, ring, modelUrl: `${import.meta.env.BASE_URL}models/${modelName}.glb`, label: sel.PARCEL_ADD || "Parcel" });
               }}>View on the lot in 3D</button>
               <div className="dlabel">Fix the call {flags[sel._key] && <span className="corrected">rep-corrected</span>}</div>
               <div className="flagrow">
@@ -936,7 +938,7 @@ export default function App({ profile, signOut } = {}) {
       </div>
 
       {show3D && (
-        <Parcel3D center={show3D.center} groundMeters={show3D.groundMeters} modelUrl={show3D.modelUrl} label={show3D.label} onClose={() => setShow3D(null)} />
+        <Parcel3D center={show3D.center} groundMeters={show3D.groundMeters} ring={show3D.ring} modelUrl={show3D.modelUrl} label={show3D.label} onClose={() => setShow3D(null)} />
       )}
 
       <nav className="bottomnav">

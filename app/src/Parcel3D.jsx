@@ -13,7 +13,7 @@ function esriExport(bbox, size) {
 }
 
 // Full-screen per-parcel 3D scene: the trailer at real scale on that lot's satellite ground.
-export default function Parcel3D({ center, groundMeters, modelUrl, label, onClose }) {
+export default function Parcel3D({ center, groundMeters, ring, modelUrl, label, onClose }) {
   const mountRef = useRef(null);
   const modelRef = useRef(null);
   const rotate = (dir) => { const m = modelRef.current; if (m) m.rotation.y += dir * Math.PI / 12; }; // 15° per tap
@@ -25,6 +25,9 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
       const THREE = await import("three");
       const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
       const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
+      const { Line2 } = await import("three/addons/lines/Line2.js");
+      const { LineGeometry } = await import("three/addons/lines/LineGeometry.js");
+      const { LineMaterial } = await import("three/addons/lines/LineMaterial.js");
       if (cancelled) return;
       const mount = mountRef.current;
       if (!mount) return;
@@ -66,6 +69,22 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
       ground.rotation.x = -Math.PI / 2;
       ground.receiveShadow = true;
       scene.add(ground);
+
+      // property lines: the parcel boundary drawn on the ground (lat/lng -> local meters; +X east, -Z north)
+      let lineMat = null;
+      if (ring && ring.length >= 3) {
+        const mPerLat = 111320, mPerLng = 111320 * Math.cos((center.lat * Math.PI) / 180);
+        const pos = [];
+        for (const [lng, lat] of ring) pos.push((lng - center.lng) * mPerLng, 0.3, -((lat - center.lat) * mPerLat));
+        const [lng0, lat0] = ring[0]; // ensure the loop closes
+        pos.push((lng0 - center.lng) * mPerLng, 0.3, -((lat0 - center.lat) * mPerLat));
+        const geo = new LineGeometry(); geo.setPositions(pos);
+        lineMat = new LineMaterial({ color: 0xffe14d, linewidth: 3, worldUnits: false, depthTest: false });
+        lineMat.resolution.set(W, H);
+        const boundary = new Line2(geo, lineMat);
+        boundary.renderOrder = 2;
+        scene.add(boundary);
+      }
 
       // trailer (real-scale GLB, bottom at y=0). Start off-center so it isn't dropped on the house.
       let model = null;
@@ -153,6 +172,7 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
       const onResize = () => {
         const w = mount.clientWidth, h = mount.clientHeight;
         camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h);
+        if (lineMat) lineMat.resolution.set(w, h);
       };
       window.addEventListener("resize", onResize);
 
@@ -174,7 +194,7 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
       };
     })();
     return () => { cancelled = true; cleanup(); };
-  }, [center, groundMeters, modelUrl]);
+  }, [center, groundMeters, modelUrl, ring]);
 
   return (
     <div className="p3d">
@@ -184,7 +204,7 @@ export default function Parcel3D({ center, groundMeters, modelUrl, label, onClos
         <button onClick={() => rotate(-1)} aria-label="Rotate left">⟲</button>
         <button onClick={() => rotate(1)} aria-label="Rotate right">⟳</button>
       </div>
-      <div className="p3d-label">{label}<small>Drag the trailer to place it · ⟲ ⟳ to rotate · drag empty space to orbit · pinch to zoom</small></div>
+      <div className="p3d-label">{label}<small>Yellow = property line · drag the trailer to place it · ⟲ ⟳ to rotate · drag empty space to orbit · pinch to zoom</small></div>
     </div>
   );
 }
