@@ -19,6 +19,7 @@ const PAGE = 2000;         // ArcGIS per-request cap; we paginate to cover the w
 const MAX_PAGES = 4;       // up to 8000 parcels per view before we ask the user to zoom in
 const RENTAL_COLOR = "#64748b";
 const SET_KEY = "yardscout.settings.v1";
+const ftIn = (f) => { const w = Math.floor(f); const i = Math.round((f - w) * 12); return i ? `${w}′${i}″` : `${w}′`; };
 const DEFAULT_SETTINGS = {
   unitW: 14, unitL: 66, unitH: 13.5, greenMargin: 1.6, highlightRentals: true, mapStyle: "satellite", home: null,
   // ADU placement rules (single-owner, local for now; shared DB comes with the per-rep phase)
@@ -829,7 +830,13 @@ export default function App({ profile, signOut } = {}) {
                     ) : (
                       <div className="mvload" style={{ height: "300px" }}><div className="spin" /></div>
                     )}
-                    <div className="unithd"><b>{m.name}</b><span>{m.beds} bd · {m.baths} ba</span></div>
+                    <div className="unithd"><b>{m.name}</b><span>{m.beds} bed · {m.baths} bath</span></div>
+                    <div className="readout" style={{ marginTop: "12px" }}>
+                      <div><b>{ftIn(m.widthFt)}</b><span>width</span></div>
+                      <div><b>{ftIn(m.lengthFt)}</b><span>length</span></div>
+                      <div><b>{ftIn(m.heightFt)}</b><span>height</span></div>
+                    </div>
+                    <p className="snote" style={{ marginTop: "8px" }}>≈ {Math.round(m.widthFt * m.lengthFt).toLocaleString()} sq ft footprint.</p>
                     {IS_IOS ? (
                       <a className="ar-anchor" style={{ marginTop: "12px" }} rel="ar" href={usdz}><img src={`${import.meta.env.BASE_URL}ar-poster.png`} alt="View in your yard" /></a>
                     ) : IS_ANDROID ? (
