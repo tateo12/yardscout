@@ -49,7 +49,7 @@ const loadOwners = () => {
 const EQ = {  // "Ember" scheme: temperature ramp so the tier reads right to anyone (fire -> gold -> slate)
   hot:  { color: "#fb5607", label: "Hot lead" },        // fire orange — long-held, deep equity; pops hardest
   warm: { color: "#f7a416", label: "Warm lead" },       // gold — mid tenure/unknown
-  cool: { color: "#5c7488", label: "Lower priority" },  // slate — recent buyer, recedes
+  cool: { color: "#4f7aa0", label: "Lower priority" },  // muted steel blue — recent buyer, recedes
 };
 // read an owner record only if still within TTL; purge it on read otherwise (enforces freshness everywhere, not just at load)
 const freshOwner = (cache, key) => {
