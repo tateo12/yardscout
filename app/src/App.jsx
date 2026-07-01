@@ -110,8 +110,8 @@ const styleFor = (feat, s) => {
   // A judged lot uses _fitStatus; an unjudged one falls back to the fast open-space score (green = promising).
   const winner = p._fitStatus ? p._fitStatus === "fits" : p._tier === "green";
   if (!winner) return HIDDEN_STYLE;
-  const c = p._fitColor || "#16b866";
-  return { color: c, weight: 2, opacity: 1, fillColor: darken(c), fillOpacity: 0.82 };  // same-hue border + darker solid fill = reads from a broad view
+  const c = darken(p._fitColor || "#16b866", 0.66);   // one darker shade of the fit hue for BOTH border and fill
+  return { color: c, weight: 2, opacity: 1, fillColor: c, fillOpacity: 0.82 };  // border matches the inside; darker = reads from a broad view
 };
 // darken a #rrggbb toward black by factor f (fill is a darker shade of the border color)
 const darken = (hex, f = 0.55) => {
