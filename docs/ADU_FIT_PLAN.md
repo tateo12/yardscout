@@ -125,6 +125,55 @@ Trailer tab becomes catalog-driven (lists all models; each has 3D preview + AR +
 - **P2:** full catalog + floor plans; count-based bands; catalog-driven Trailer tab; admin editor.
 - **P3:** LiDAR slope/heights; easement/zoning layers if a free source exists; customer website + share link.
 
+## Settings & configuration (city switcher + everything that needs to be tunable)
+
+### Shared vs per-device (the key split, now that data is org-shared)
+- **Org-shared (Supabase; OWNER edits, reps read-only via `app_is_owner()` RLS):** anything that changes the
+  *truth* of a score — jurisdiction rules, business overlay, catalog + default model, prospect rule. One source
+  of truth for the whole crew.
+- **Per-device (localStorage, each rep):** cosmetic/navigation only — map style, highlight-rentals, home location.
+  Never affects shared results.
+- This also fixes a latent bug: today's trailer-size + scoring-strictness live in localStorage and drive the
+  score — in a crew that means every rep scores differently. They move to shared config.
+
+### Jurisdiction profiles — the city switcher (NEW table `jurisdiction_profiles`)
+One row per city/zone the business works. Columns:
+`id, org_id, name, match_cities text[] (PARCEL_CITY values that map here), is_default bool,
+min_lot_sqft, rear_ft, side_ft, front_behind_facade_ft, max_adu_sqft, max_adu_pct_of_primary,
+height_ft, parking_spaces, owner_occupied bool, side_source (sourced|provisional|heuristic),
+notes, active, updated_at`. RLS: org members `select`; owner `insert/update`.
+- **How a parcel picks a profile:** `parcel.PARCEL_CITY` → first profile whose `match_cities` contains it →
+  else the org **default** profile → else **fail-closed "needs verification"** (never silently green).
+- Seeded with the **SLCo/Kearns** profile (the `sourced` numbers: 7,000 sqft, rear 10, front 10-behind-facade)
+  plus a conservative provisional default. Owner adds West Valley, Taylorsville, etc. as they expand.
+- Every field keeps its source tag → shown on the tap result so a rep sees code vs guess.
+- Editing a profile bumps the **profile version** in the fit-cache key → recompute + realtime rebroadcast.
+
+### Business overlay + behavior — `org_settings` (jsonb, one row per org, owner edits)
+- `house_separation_ft` (default 20, `heuristic` — your crane/access practice, not code)
+- `backin_min_side_gap_ft` (ADR-0003: side-yard gap needed to back in vs. crane)
+- `default_model_id` (which catalog model anchors the map color)
+- `prospect_rule` (what lands on the knock list — green only vs green+yellow)
+- `fastcolor_margin` (the zoomed-out open-space first-pass strictness — kept as a cheap knob)
+
+### Catalog (`adu_models`) — owner-managed shared config
+Config list in code now; **P2** = table + admin editor (name, W/L/H, beds/baths, price, floor-plan, glb/usdz,
+active). `default_model_id` points here. Editing bumps the **catalog version** in the fit-cache key.
+
+### Migration of existing settings
+- trailer W/L/H presets + scoring strictness (per-device, score-affecting today) → **move to shared**
+  (catalog + `org_settings`); old localStorage values ignored.
+- map style, highlight-rentals, set-home → **stay per-device**.
+- export / reset / clear → unchanged (export is already shared-aware).
+
+### Settings tab layout (by permission)
+- **Owner — "Company rules":** Jurisdictions (list; add/edit city profiles; set default), Business rules,
+  Catalog + default model, Prospect rule. Writes to Supabase, broadcasts to the crew, invalidates the fit cache.
+- **Everyone — "My app":** map style, highlight-rentals, set home, export data.
+- A rep opening a company rule sees it **read-only** ("managed by your admin").
+- New DB objects needed (future migration): `jurisdiction_profiles` table, `org_settings` row, and (P2)
+  `adu_models` — all with owner-write / org-read RLS, mirroring the existing pattern.
+
 ## Geometry validation (test fixtures — build against these before trusting output)
 
 Hand-picked real parcels + synthetic cases, with expected buildable-zone / fit asserted:
