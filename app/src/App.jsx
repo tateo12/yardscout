@@ -902,7 +902,7 @@ export default function App({ profile, signOut } = {}) {
                 const g = lyr.feature?.geometry;
                 const ring = g?.type === "MultiPolygon" ? g.coordinates[0][0] : g?.coordinates?.[0];
                 const mdl = aduFit?.best?.model || ADU_MODELS[0];
-                setShow3D({ center: { lat: c.lat, lng: c.lng }, groundMeters, ring, modelUrl: `${import.meta.env.BASE_URL}models/${mdl.glb}.glb`, dims: { widthFt: mdl.widthFt, lengthFt: mdl.lengthFt, heightFt: mdl.heightFt }, label: sel.PARCEL_ADD || "Parcel" });
+                setShow3D({ center: { lat: c.lat, lng: c.lng }, groundMeters, ring, modelUrl: `${import.meta.env.BASE_URL}models/${mdl.glb}.glb`, dims: { widthFt: mdl.widthFt, lengthFt: mdl.lengthFt, heightFt: mdl.heightFt }, place: aduFit?.best?.place || null, label: sel.PARCEL_ADD || "Parcel" });
               }}>View on the lot in 3D</button>
               <div className="dlabel">Log a knock</div>
               <div className="outcomes">
@@ -1168,7 +1168,7 @@ export default function App({ profile, signOut } = {}) {
       </div>
 
       {show3D && (
-        <Parcel3D center={show3D.center} groundMeters={show3D.groundMeters} ring={show3D.ring} modelUrl={show3D.modelUrl} dims={show3D.dims} label={show3D.label} onClose={() => setShow3D(null)} />
+        <Parcel3D center={show3D.center} groundMeters={show3D.groundMeters} ring={show3D.ring} modelUrl={show3D.modelUrl} dims={show3D.dims} place={show3D.place} label={show3D.label} onClose={() => setShow3D(null)} />
       )}
 
       {floorPlan && (() => {

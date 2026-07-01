@@ -14,7 +14,7 @@ function esriExport(bbox, size) {
 }
 
 // Full-screen per-parcel 3D scene: the trailer at real scale on that lot's satellite ground.
-export default function Parcel3D({ center, groundMeters, ring, modelUrl, dims, label, onClose }) {
+export default function Parcel3D({ center, groundMeters, ring, modelUrl, dims, place, label, onClose }) {
   const mountRef = useRef(null);
   const modelRef = useRef(null);
   const canvasRef = useRef(null);
@@ -107,7 +107,15 @@ export default function Parcel3D({ center, groundMeters, ring, modelUrl, dims, l
         }
         const bb = new THREE.Box3().setFromObject(gltf.scene);
         gltf.scene.position.y -= bb.min.y;        // seat the bottom on the ground
-        gltf.scene.position.z = groundMeters * 0.18;
+        if (place) {
+          // drop it where the fit engine says it goes (lat/lng -> local meters; +X east, -Z north), oriented to match
+          const mPerLat = 111320, mPerLng = 111320 * Math.cos((center.lat * Math.PI) / 180);
+          gltf.scene.position.x = (place.lng - center.lng) * mPerLng;
+          gltf.scene.position.z = -((place.lat - center.lat) * mPerLat);
+          gltf.scene.rotation.y = place.headingRad || 0;
+        } else {
+          gltf.scene.position.z = groundMeters * 0.18;   // no computed fit -> start off-center, off the house
+        }
         scene.add(gltf.scene);
         model = gltf.scene;
         modelRef.current = model;
@@ -209,7 +217,7 @@ export default function Parcel3D({ center, groundMeters, ring, modelUrl, dims, l
       };
     })();
     return () => { cancelled = true; cleanup(); };
-  }, [center, groundMeters, modelUrl, ring, dims]);
+  }, [center, groundMeters, modelUrl, ring, dims, place]);
 
   return (
     <div className="p3d">
@@ -220,7 +228,7 @@ export default function Parcel3D({ center, groundMeters, ring, modelUrl, dims, l
         <button onClick={() => rotate(1)} aria-label="Rotate right">⟳</button>
       </div>
       <button className="p3d-share" onClick={shareView}>Share this view</button>
-      <div className="p3d-label">{label}<small>Yellow = property line · drag the trailer to place it · ⟲ ⟳ to rotate · drag empty space to orbit · pinch to zoom</small></div>
+      <div className="p3d-label">{label}<small>Yellow = property line · placed where it fits · drag to adjust · ⟲ ⟳ to rotate · drag empty space to orbit · pinch to zoom</small></div>
     </div>
   );
 }

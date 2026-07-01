@@ -138,6 +138,12 @@ export function fitParcelWith(parcel, buildings, roads, { models, profile, overl
   const results = models.map((m) => ({ model: m, ...fitModel({ zone: z.zone, constraints: z.constraints, house: houseLocal, model: m, overlay }) }));
   const fits = results.filter((r) => r.fits).sort((a, b) => b.clearanceFt - a.clearanceFt);
   const best = fits[0] || null;
+  // export where the best unit actually fits (most-room spot the engine found) as lat/lng + heading, so the 3D
+  // view can drop the model there instead of an arbitrary offset. headingRad = bearing of the unit's WIDTH axis.
+  if (best?.placement) {
+    const [lng, lat] = frame.toLngLat(best.placement.center);
+    best.place = { lng, lat, headingRad: Math.atan2(best.placement.u[1], best.placement.u[0]) };
+  }
   const color = best ? scoreToColor(fitScore(best.clearanceFt, best.model), { fits: true }) : "#dd5145";
   return { status: fits.length ? "fits" : "no-fit", fits, results, best, color, ...base };
 }
