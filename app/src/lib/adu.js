@@ -2,10 +2,16 @@
 // (jurisdiction_profiles + org_settings). See docs/ADU_FIT_PLAN.md.
 
 export const ADU_MODELS = [
-  { id: "lafortune-40", name: "40′ × 13′4″", widthFt: 13.333, lengthFt: 40, heightFt: 13.5, beds: 1, baths: 1,
-    glb: "lafortune-40", usdz: "single", floorPlan: "floorplans/lafortune-40.pdf" },
-  // NOTE: glb is correctly sized (40x13'4). usdz (iOS AR) is still the generic 14x66 — needs a proper USD
-  // regen (best from a real authored model). Android AR + model-viewer + the 3D lot view are correct.
+  { id: "stratus-24x36", name: "Stratus (24 × 36)", widthFt: 23.333, lengthFt: 36, heightFt: 13.5, beds: 2, baths: 1,
+    glb: "stratus-24x36", usdz: "single", floorPlan: "floorplans/stratus-24x36.pdf" },   // Cavco Prestige 24362D, double-wide, 840 sqft
+  { id: "bench-14x48", name: "The Bench (14 × 48)", widthFt: 13.333, lengthFt: 48, heightFt: 13.5, beds: 2, baths: 1,
+    glb: "bench-14x48", usdz: "single", floorPlan: "floorplans/bench-14x48.pdf" },        // Cavco Broadmore 14482B, 639 sqft
+  { id: "favor-14x48", name: "The Favor (14 × 48)", widthFt: 13.333, lengthFt: 48, heightFt: 13.5, beds: 2, baths: 1,
+    glb: "favor-14x48", usdz: "single", floorPlan: "floorplans/favor-14x48.pdf" },        // Cavco Pure 14482P, 643 sqft
+  { id: "lafortune-40", name: "LaFortune (40 × 13′4″)", widthFt: 13.333, lengthFt: 40, heightFt: 13.5, beds: 1, baths: 1,
+    glb: "lafortune-40", usdz: "single", floorPlan: "floorplans/lafortune-40.pdf" },      // permitted plan, 533 sqft
+  // widthFt/lengthFt = ACTUAL exterior box (nominal "14" wide = 13'4"). glb is correctly proportioned per footprint.
+  // usdz (iOS AR) is still the generic single-wide — off-size on iPhone until real authored models. Android AR + 3D lot view are correct.
 ];
 
 // Salt Lake County / Kearns profile (sourced from county code — verify; SB284 may change it).

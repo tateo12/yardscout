@@ -97,19 +97,20 @@ const METHODS = [
   { key: "crane", label: "Crane it in" },
 ];
 
-// Fast open-space tier for LOW zoom (block zoom runs the exact fit engine instead). No user knobs: it uses the
-// biggest unit in the catalog and a fixed standard margin, so "promising" is consistent for everyone.
-const MAX_UNIT = ADU_MODELS.reduce((a, m) => (m.widthFt * m.lengthFt > a.w * a.l ? { w: m.widthFt, l: m.lengthFt } : a), { w: 0, l: 0 });
+// Fast open-space tier for LOW zoom (block zoom runs the exact fit engine instead). No user knobs. Uses the
+// SMALLEST/easiest unit in the catalog so "promising" (green) means "at least one unit could plausibly fit" —
+// permissive on purpose, so we don't hide potential doors when zoomed out.
+const MIN_UNIT = ADU_MODELS.reduce((a, m) => (m.widthFt * m.lengthFt < a.w * a.l ? { w: m.widthFt, l: m.lengthFt } : a), { w: 1e9, l: 1e9 });
 const STANDARD_MARGIN = 1.6;
 function scoreOf(props) {
   const lot = (props.PARCEL_ACRES || 0) * SQFT_PER_ACRE;
   const open = Math.max(0, lot - (props.BLDG_SQFT || 0));
   const yard = open * BACKYARD_FRAC;          // sq ft of usable back yard
-  const unit = MAX_UNIT.w * MAX_UNIT.l;       // home footprint sq ft
+  const unit = MIN_UNIT.w * MIN_UNIT.l;       // smallest home footprint sq ft
   // Dimensional check: the parcel data only gives areas, not yard shape, so we estimate the buildable yard as a
   // square and require the home's LONG side to physically span it (enough sq ft isn't enough if the yard is short).
   const yardSpan = Math.sqrt(yard);           // est. yard dimension (ft)
-  const homeLong = Math.max(MAX_UNIT.w, MAX_UNIT.l);
+  const homeLong = Math.max(MIN_UNIT.w, MIN_UNIT.l);
   if (yard < unit || yardSpan < homeLong) return "red";
   if (yard < unit * STANDARD_MARGIN || yardSpan < homeLong * Math.sqrt(STANDARD_MARGIN)) return "yellow";
   return "green";
