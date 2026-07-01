@@ -47,9 +47,9 @@ const loadOwners = () => {
 };
 // equity-likelihood tiers: shade the fitting lots by lead quality (hot = long-held/deep equity). Estimate, not a $ amount.
 const EQ = {
-  hot:  { color: "#e8590c", label: "Hot lead" },
-  warm: { color: "#2f9e5f", label: "Warm lead" },
-  cool: { color: "#7d94a0", label: "Lower priority" },
+  hot:  { color: "#f97316", label: "Hot lead" },   // bright orange (not red) — the best doors pop hardest
+  warm: { color: "#1f8a4c", label: "Warm lead" },
+  cool: { color: "#607485", label: "Lower priority" },
 };
 // read an owner record only if still within TTL; purge it on read otherwise (enforces freshness everywhere, not just at load)
 const freshOwner = (cache, key) => {
@@ -138,10 +138,10 @@ const styleFor = (feat, s) => {
   // A judged lot uses _fitStatus; an unjudged one falls back to the fast open-space score (green = promising).
   const winner = p._fitStatus ? p._fitStatus === "fits" : p._tier === "green";
   if (!winner) return HIDDEN_STYLE;
-  // Among lots that FIT, shade by equity-lead tier when we have owner data; otherwise fall back to the fit hue.
-  const base = p._ownerTier ? EQ[p._ownerTier].color : (p._fitColor || "#16b866");
-  const c = darken(base, 0.66);   // one darker shade for BOTH border and fill
-  return { color: c, weight: 2, opacity: 1, fillColor: c, fillOpacity: 0.82 };  // border matches the inside; darker = reads from a broad view
+  // Among lots that FIT, shade by equity-lead tier (hand-picked colors used as-is) when we have owner data;
+  // otherwise fall back to the auto fit hue, which needs darkening to read from a broad view.
+  const c = p._ownerTier ? EQ[p._ownerTier].color : darken(p._fitColor || "#16b866", 0.66);
+  return { color: c, weight: 2, opacity: 1, fillColor: c, fillOpacity: 0.82 };  // border matches the inside
 };
 // darken a #rrggbb toward black by factor f (fill is a darker shade of the border color)
 const darken = (hex, f = 0.55) => {
@@ -844,9 +844,9 @@ export default function App({ profile, signOut } = {}) {
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3.4" /><path d="M12 2v3.2M12 18.8V22M2 12h3.2M18.8 12H22" /></svg>
           </button>
           <div className="legend">
-            <span><i style={{ background: darken(EQ.hot.color, 0.66) }} />Hot lead</span>
-            <span><i style={{ background: darken(EQ.warm.color, 0.66) }} />Warm</span>
-            <span><i style={{ background: darken(EQ.cool.color, 0.66) }} />Lower</span>
+            <span><i style={{ background: EQ.hot.color }} />Hot lead</span>
+            <span><i style={{ background: EQ.warm.color }} />Warm</span>
+            <span><i style={{ background: EQ.cool.color }} />Lower</span>
             {settings.highlightRentals && <span><i style={{ background: RENTAL_COLOR }} />Rental</span>}
           </div>
           {sel && (
