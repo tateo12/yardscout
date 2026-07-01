@@ -66,6 +66,8 @@
 .selrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; color: #2b3140; }
 .selrow span { font-weight: 600; }
 .selrow select { font-family: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: #14181e; min-width: 45%; }
+.ptr { flex: none; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--graphite); color: #fff; }
+.ptr span { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; opacity: .9; }
 .custfields { display: flex; flex-direction: column; gap: 8px; margin-top: 13px; }
 .corrected { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--graphite); color: #fff; font-size: 9px; letter-spacing: .6px; vertical-align: middle; }
 .flagrow { display: flex; gap: 6px; }

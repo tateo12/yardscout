@@ -167,6 +167,10 @@ export default function App({ profile, signOut } = {}) {
   const [show3D, setShow3D] = useState(null);
   const [aduFit, setAduFit] = useState(null);
   const [aduLoading, setAduLoading] = useState(false);
+  const [pull, setPull] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const pullRef = useRef(0);
+  const ptr = useRef({ startY: 0, active: false });
   const [settings, setSettings] = useState(() => {
     try { return { ...DEFAULT_SETTINGS, ...(JSON.parse(localStorage.getItem(SET_KEY)) || {}) }; } catch { return DEFAULT_SETTINGS; }
   });
@@ -420,7 +424,9 @@ export default function App({ profile, signOut } = {}) {
   }, [renderParcels]);
 
   useEffect(() => {
-    const home = settingsRef.current.home || { lat: 40.6655, lng: -111.9925, zoom: 16 };
+    let lastView = null;
+    try { lastView = JSON.parse(localStorage.getItem("yardscout.view")); } catch { /* ignore */ }
+    const home = lastView || settingsRef.current.home || { lat: 40.6655, lng: -111.9925, zoom: 16 };
     const map = L.map("map", { preferCanvas: true, zoomControl: true, attributionControl: false }).setView([home.lat, home.lng], home.zoom);
     mapRef.current = map;
     baseLayerRef.current = L.tileLayer(TILES[settingsRef.current.mapStyle] || TILES.satellite, { maxZoom: 20 }).addTo(map);
@@ -433,11 +439,51 @@ export default function App({ profile, signOut } = {}) {
     };
     map.on("zoomend", resizeFlags);
     let t;
-    const debounced = () => { clearTimeout(t); t = setTimeout(loadViewport, 400); };
+    const debounced = () => {
+      clearTimeout(t); t = setTimeout(loadViewport, 400);
+      const c = map.getCenter();
+      try { localStorage.setItem("yardscout.view", JSON.stringify({ lat: c.lat, lng: c.lng, zoom: map.getZoom() })); } catch { /* ignore */ }
+    };
     map.on("moveend", debounced);
     loadViewport();
     return () => { clearTimeout(t); map.remove(); mapRef.current = null; layerRef.current = null; markersRef.current = null; idToLayer.current = {}; };
   }, [loadViewport]);
+
+  // pull-to-refresh: drag down (not on the map/3D) to reload. Reloads latest data + build; map view is restored.
+  useEffect(() => {
+    const THRESH = 70;
+    const reset = () => { pullRef.current = 0; setPull(0); ptr.current.active = false; };
+    const onStart = (e) => {
+      if (e.touches.length !== 1 || refreshing) { ptr.current.active = false; return; }
+      const t = e.target;
+      if (t.closest?.(".leaflet-container, .p3d")) { ptr.current.active = false; return; }
+      const sc = t.closest?.(".panel, .detail, main");
+      if (sc && sc.scrollTop > 4) { ptr.current.active = false; return; }
+      ptr.current = { startY: e.touches[0].clientY, active: true };
+    };
+    const onMove = (e) => {
+      if (!ptr.current.active) return;
+      const dy = e.touches[0].clientY - ptr.current.startY;
+      if (dy <= 0) { pullRef.current = 0; setPull(0); return; }
+      const p = Math.min(95, dy * 0.5);
+      pullRef.current = p; setPull(p);
+      if (p > 3 && e.cancelable) e.preventDefault();
+    };
+    const onEnd = () => {
+      if (ptr.current.active && pullRef.current >= THRESH) { setRefreshing(true); setTimeout(() => window.location.reload(), 200); }
+      else reset();
+    };
+    document.addEventListener("touchstart", onStart, { passive: true });
+    document.addEventListener("touchmove", onMove, { passive: false });
+    document.addEventListener("touchend", onEnd);
+    document.addEventListener("touchcancel", reset);
+    return () => {
+      document.removeEventListener("touchstart", onStart);
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onEnd);
+      document.removeEventListener("touchcancel", reset);
+    };
+  }, [refreshing]);
 
   useEffect(() => { if (tab === "map") setTimeout(() => mapRef.current?.invalidateSize(), 0); }, [tab]);
 
@@ -594,6 +640,9 @@ export default function App({ profile, signOut } = {}) {
 
   return (
     <div className="app">
+      <div className="ptr" style={{ height: pull }}>
+        <span>{refreshing ? "Refreshing…" : pull >= 70 ? "Release to refresh" : "Pull to refresh"}</span>
+      </div>
       <header className="top">
         <Logo />
         <div className="title"><b>Yardscout</b><small>Salt Lake Valley</small></div>

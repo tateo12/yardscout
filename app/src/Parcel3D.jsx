@@ -79,11 +79,10 @@ export default function Parcel3D({ center, groundMeters, ring, modelUrl, label, 
         const [lng0, lat0] = ring[0]; // ensure the loop closes
         pos.push((lng0 - center.lng) * mPerLng, 0.3, -((lat0 - center.lat) * mPerLat));
         const geo = new LineGeometry(); geo.setPositions(pos);
-        lineMat = new LineMaterial({ color: 0xffe14d, linewidth: 3, worldUnits: false, depthTest: false });
+        // depthTest ON so the trailer (a solid, closer mesh) occludes the line instead of it cutting through
+        lineMat = new LineMaterial({ color: 0xffe14d, linewidth: 3, worldUnits: false, depthTest: true });
         lineMat.resolution.set(W, H);
-        const boundary = new Line2(geo, lineMat);
-        boundary.renderOrder = 2;
-        scene.add(boundary);
+        scene.add(new Line2(geo, lineMat));
       }
 
       // trailer (real-scale GLB, bottom at y=0). Start off-center so it isn't dropped on the house.
