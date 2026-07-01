@@ -167,6 +167,17 @@ active). `default_model_id` points here. Editing bumps the **catalog version** i
 - map style, highlight-rentals, set-home → **stay per-device**.
 - export / reset / clear → unchanged (export is already shared-aware).
 
+### Every setting is a DROPDOWN of preset options — no free-text (Tate 2026-06-30)
+Owner picks from curated lists; can't type an invalid/unsafe number. Option sets:
+- **City / jurisdiction** (the master switch — loads the legal fields below): `Salt Lake County — Kearns`, then
+  more cities as the business expands.
+- Min lot size: 6,000 / **7,000** / 8,000 / 10,000 sqft · Side: **5** / 8 / 10 · Rear: **10** / 15 / 20 ·
+  Behind house front: 5 / **10** / 15 (all default to the selected city's `sourced` value).
+- Distance from house (business): 6 / 10 / 15 / **20** / 25 · Back-in vs crane cutoff: 12 / 14 / **16** / 18 / 20.
+- Knock list shows: **Green only** / Green + Yellow · Default model: (catalog list).
+Legal fields default from the city pick but stay adjustable (dropdown) for when a city differs; business fields
+are the owner's to set. Stored per the shared-config model below.
+
 ### Settings tab layout — SINGLE-OWNER NOW, per-rep later (Tate 2026-06-30)
 Build only what one owner-operator needs. **No per-rep read-only gating UI yet** — that's a later phase when a
 real crew exists. RLS still owner-write / org-read at the DB (cheap, future-proof), but the app shows the one
