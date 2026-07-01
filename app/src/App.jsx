@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
 import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads } from "./lib/geo";
-import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS, FIELD_CHECKS } from "./lib/adu";
+import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS } from "./lib/adu";
 import { sharePdf } from "./lib/share";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -27,6 +27,13 @@ const DEFAULT_SETTINGS = {
   aduCity: "slco-kearns", minLotSqft: 7000, sideFt: 5, rearFt: 10, frontBehindFacadeFt: 10,
   houseSeparationFt: 20, backinMinSideGapFt: 16,
 };
+// persistent per-lot fit cache (survives panning + reloads); keyed by parcel id, scoped to a rules signature
+const FITS_KEY = "yardscout.fits.v1";
+const loadFits = () => {
+  try { const d = JSON.parse(localStorage.getItem(FITS_KEY)); return { map: new Map(Object.entries(d?.entries || {})), sig: d?.sig || null }; }
+  catch { return { map: new Map(), sig: null }; }
+};
+
 const PRESETS = [
   { key: "single", label: "Single-wide", w: 14, l: 66, h: 13.5 },
   { key: "park", label: "Park model", w: 12, l: 35, h: 13.5 },
@@ -99,13 +106,15 @@ const styleFor = (feat, s) => {
   const p = feat.properties;
   if (s.highlightRentals && isRental(p))
     return { color: RENTAL_COLOR, weight: 1.3, fillColor: RENTAL_COLOR, fillOpacity: 0.5 };
-  const c = p._fitColor || TIER[p._tier].color;   // block-zoom fit color wins when computed
-  return { color: c, weight: 1, fillColor: c, fillOpacity: 0.3 };
+  // Only the lots that WORK are highlighted; everything else is plain satellite (still tappable).
+  // A judged lot uses _fitStatus; an unjudged one falls back to the fast open-space score (green = promising).
+  const winner = p._fitStatus ? p._fitStatus === "fits" : p._tier === "green";
+  if (!winner) return HIDDEN_STYLE;
+  const c = p._fitColor || "#16b866";
+  return { color: "#0a3d24", weight: 2, fillColor: c, fillOpacity: 0.5 };  // dark edge + vivid fill = pops on satellite
 };
-// map colors for the geometry-driven fit at block zoom: fits -> its fade color, no-fit/ineligible -> red,
-// needs-check -> slate (unknown, not a no).
-const FIT_MAP_COLOR = { "no-fit": "#dd5145", "not-eligible": "#dd5145", "needs-check": "#64748b", error: "#64748b" };
-const colorForFit = (r) => (r.status === "fits" ? r.color : FIT_MAP_COLOR[r.status] || "#64748b");
+// invisible fill so non-winners stay clickable (tap any house at a door) without cluttering the map
+const HIDDEN_STYLE = { stroke: false, fill: true, fillColor: "#16b866", fillOpacity: 0.001 };
 
 // flag marker (Option D): pole-left flag for CUSTOMERS, recolored via currentColor. Size is baked into the
 // icon so the clickable area always matches what you see; icons regenerate on zoom instead of CSS-scaling.
@@ -159,7 +168,9 @@ export default function App({ profile, signOut } = {}) {
   const orgIdRef = useRef(orgId);
   const reqToken = useRef(0);
   const fitToken = useRef(0);
-  const fitCacheRef = useRef(new Map());   // parcelId|rulesSig -> map color (session cache)
+  const fitCacheRef = useRef(null);        // parcelId -> {status, color}; persisted, scoped to sigRef
+  const sigRef = useRef(null);
+  if (fitCacheRef.current === null) { const { map, sig } = loadFits(); fitCacheRef.current = map; sigRef.current = sig; }
   const aduProfileRef = useRef(KEARNS_PROFILE);
   const aduOverlayRef = useRef(BUSINESS_OVERLAY);
   const meMarker = useRef(null);
@@ -343,6 +354,8 @@ export default function App({ profile, signOut } = {}) {
       const p = f.properties;
       p._key = String(p.PARCEL_ID || p.OBJECTID);
       p._tier = resolveVerdict(p._key, p);
+      const cached = !flagsRef.current[p._key] && fitCacheRef.current.get(p._key);   // paint judged lots instantly (no flicker)
+      if (cached) { p._fitStatus = cached.status; p._fitColor = cached.color; }
     });
     const layer = L.geoJSON({ type: "FeatureCollection", features: rawFeatures }, {
       style: (f) => styleFor(f, settingsRef.current),
@@ -396,33 +409,36 @@ export default function App({ profile, signOut } = {}) {
     }
   };
 
-  // At block zoom, color every visible lot by the exact geometry fit (one buildings/roads fetch for the whole
-  // viewport, then compute each parcel locally; cache per parcel+rules). Below FIT_ZOOM, revert to the fast score.
+  const persistFits = () => {
+    try { localStorage.setItem(FITS_KEY, JSON.stringify({ sig: sigRef.current, entries: Object.fromEntries(fitCacheRef.current) })); } catch { /* quota */ }
+  };
+
+  // At block zoom, judge any not-yet-judged visible lots ONCE (one viewport fetch), cache the result
+  // persistently, and highlight the winners. Already-judged lots keep their color (no re-judging = no flicker).
   const computeFits = useCallback(async () => {
-    const map = mapRef.current, layer = layerRef.current;
-    if (!map || !layer) return;
-    if (map.getZoom() < FIT_ZOOM) {
-      layer.eachLayer((l) => { if (l.feature.properties._fitColor) { delete l.feature.properties._fitColor; l.setStyle(styleFor(l.feature, settingsRef.current)); } });
-      return;
-    }
+    const map = mapRef.current;
+    if (!map || !layerRef.current || map.getZoom() < FIT_ZOOM) return;   // low zoom: keep whatever's cached
+    const uncached = [];
+    layerRef.current.eachLayer((l) => { const k = l.feature.properties._key; if (!flagsRef.current[k] && !fitCacheRef.current.has(k)) uncached.push(l); });
+    if (!uncached.length) return;                                        // everything in view already judged
     const b = map.getBounds();
     const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
     const token = ++fitToken.current;
     let buildings, roads;
     try { [buildings, roads] = await Promise.all([fetchBuildings(bbox), fetchRoads(bbox)]); }
     catch { return; }
-    if (token !== fitToken.current || !layerRef.current) return; // a newer move superseded this
+    if (token !== fitToken.current || !layerRef.current) return;         // a newer move superseded this
     const opts = { models: ADU_MODELS, profile: aduProfileRef.current, overlay: aduOverlayRef.current };
-    const sig = JSON.stringify([aduProfileRef.current, aduOverlayRef.current]);
-    layerRef.current.eachLayer((l) => {
+    uncached.forEach((l) => {
       const p = l.feature.properties, key = p._key;
-      if (flagsRef.current[key]) return;           // a rep flag override wins over the computed fit
-      const ck = key + "|" + sig;
-      let col = fitCacheRef.current.get(ck);
-      if (col === undefined) { col = colorForFit(fitParcelWith(l.feature, buildings, roads, opts)); fitCacheRef.current.set(ck, col); }
-      p._fitColor = col;
+      if (fitCacheRef.current.has(key)) return;
+      const r = fitParcelWith(l.feature, buildings, roads, opts);
+      const entry = { status: r.status, color: r.status === "fits" ? r.color : null };
+      fitCacheRef.current.set(key, entry);
+      p._fitStatus = entry.status; p._fitColor = entry.color;
       l.setStyle(styleFor(l.feature, settingsRef.current));
     });
+    persistFits();
   }, []);
 
   const loadViewport = useCallback(() => {
@@ -570,7 +586,15 @@ export default function App({ profile, signOut } = {}) {
   }), [settings.houseSeparationFt, settings.backinMinSideGapFt]);
 
   // keep the fit-engine refs current and re-color the map when the rules change
-  useEffect(() => { aduProfileRef.current = aduProfile; aduOverlayRef.current = aduOverlay; computeFits(); }, [aduProfile, aduOverlay, computeFits]);
+  useEffect(() => {
+    aduProfileRef.current = aduProfile; aduOverlayRef.current = aduOverlay;
+    const sig = JSON.stringify([aduProfile, aduOverlay, ADU_MODELS.map((m) => m.id)]);
+    if (sig !== sigRef.current) {   // rules changed -> drop stale judgments and re-judge against the new rules
+      sigRef.current = sig; fitCacheRef.current = new Map(); persistFits();
+      layerRef.current?.eachLayer((l) => { const p = l.feature.properties; delete p._fitStatus; delete p._fitColor; l.setStyle(styleFor(l.feature, settingsRef.current)); });
+    }
+    computeFits();
+  }, [aduProfile, aduOverlay, computeFits]);
 
   // on tap, run the ADU fit pipeline for the selected parcel (fetch footprints/roads -> which models fit)
   useEffect(() => {
@@ -753,12 +777,6 @@ export default function App({ profile, signOut } = {}) {
                 <div className="fitrow warn">Needs a look — {NEEDS_CHECK_LABEL[aduFit.reason] || aduFit.reason}.</div>
               )}
               {!aduLoading && aduFit?.status === "error" && <div className="fitrow warn">Couldn’t check this lot right now.</div>}
-              {!aduLoading && aduFit?.status === "fits" && (
-                <>
-                  <div className="dlabel">Confirm on site</div>
-                  <ul className="checks">{FIELD_CHECKS.map((c) => <li key={c}>{c}</li>)}</ul>
-                </>
-              )}
               <div className="disclaim">Estimate from county data — verify on site before committing.</div>
               <button className="lot3d" onClick={() => {
                 const lyr = idToLayer.current[sel._key]; if (!lyr) return;
@@ -771,11 +789,6 @@ export default function App({ profile, signOut } = {}) {
                 const mdl = aduFit?.best?.model || ADU_MODELS[0];
                 setShow3D({ center: { lat: c.lat, lng: c.lng }, groundMeters, ring, modelUrl: `${import.meta.env.BASE_URL}models/${mdl.glb}.glb`, dims: { widthFt: mdl.widthFt, lengthFt: mdl.lengthFt, heightFt: mdl.heightFt }, label: sel.PARCEL_ADD || "Parcel" });
               }}>View on the lot in 3D</button>
-              <div className="dlabel">Fix the call {flags[sel._key] && <span className="corrected">rep-corrected</span>}</div>
-              <div className="flagrow">
-                <button className={"flagbtn fit" + (flags[sel._key] === "fits" ? " on" : "")} onClick={() => setFlag(sel._key, "fits")}>It fits</button>
-                <button className={"flagbtn nofit" + (flags[sel._key] === "no_fit" ? " on" : "")} onClick={() => setFlag(sel._key, "no_fit")}>Won't fit</button>
-              </div>
               <div className="dlabel">Log a knock</div>
               <div className="outcomes">
                 {OUTCOMES.map((o) => (

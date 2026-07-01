@@ -61,10 +61,10 @@ const house = { ring: [[5, 5], [20, 5], [20, 20], [5, 20]] };  // 15x15m house n
 
 // --- 6. color mapping sanity ---
 {
-  ok("color: no-fit is red", scoreToColor(0, { fits: false }) === "#dd5145");
+  ok("color: no-fit is red", scoreToColor(0, { fits: false }) === "#e5372b");
   const s = fitScore(10, M40); // 10 ft clearance on a 13.3 ft model
   ok("color: fitScore in (0,1]", s > 0 && s <= 1, String(s));
-  ok("color: high clearance trends green", scoreToColor(fitScore(20, M40), { fits: true }) === "#1fa36b");
+  ok("color: high clearance trends emerald", scoreToColor(fitScore(20, M40), { fits: true }) === "#16b866");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

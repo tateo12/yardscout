@@ -235,10 +235,10 @@ export function fitScore(clearanceFt, model) {
   return Math.max(0, Math.min(1, clearanceFt / (0.4 * model.widthFt)));
 }
 export function scoreToColor(score, { fits }) {
-  if (!fits) return "#dd5145";                    // red
+  if (!fits) return "#e5372b";                    // red (only used for the tap detail, not the map)
   const s = Math.max(0, Math.min(1, score));
-  // yellow (#f5a524) -> green (#1fa36b)
-  const a = [0xf5, 0xa5, 0x24], b = [0x1f, 0xa3, 0x6b];
+  // tight amber (#f5b301) -> roomy emerald (#16b866)
+  const a = [0xf5, 0xb3, 0x01], b = [0x16, 0xb8, 0x66];
   const c = a.map((v, i) => Math.round(v + (b[i] - v) * s));
   return `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }
