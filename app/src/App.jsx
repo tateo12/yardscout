@@ -22,7 +22,7 @@ const MAX_PAGES = 4;       // up to 8000 parcels per view before we ask the user
 const SET_KEY = "yardscout.settings.v1";
 const ftIn = (f) => { const w = Math.floor(f); const i = Math.round((f - w) * 12); return i ? `${w}′${i}″` : `${w}′`; };
 const DEFAULT_SETTINGS = {
-  unitW: 14, unitL: 66, unitH: 13.5, greenMargin: 1.6, mapStyle: "satellite", home: null,
+  mapStyle: "satellite", home: null,
   // ADU placement rules (single-owner, local for now; shared DB comes with the per-rep phase)
   aduCity: "slco-kearns", minLotSqft: 7000, sideFt: 5, rearFt: 10, frontBehindFacadeFt: 10,
   houseSeparationFt: 20, backinMinSideGapFt: 16,
@@ -61,16 +61,6 @@ const ownerDisplay = (s) => String(s || "").split(";")[0].replace(/\([^)]*\)/g, 
   .toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase());
 const fmtAsOf = (ts) => { try { return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); } catch { return "recently"; } };
 
-const PRESETS = [
-  { key: "single", label: "Single-wide", w: 14, l: 66, h: 13.5 },
-  { key: "park", label: "Park model", w: 12, l: 35, h: 13.5 },
-  { key: "camper", label: "Camper", w: 8, l: 30, h: 10 },
-];
-const STRICTNESS = [
-  { key: 1.2, label: "Tight" },
-  { key: 1.6, label: "Standard" },
-  { key: 2.2, label: "Roomy" },
-];
 const TILES = {
   satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
   streets: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
@@ -107,26 +97,26 @@ const METHODS = [
   { key: "crane", label: "Crane it in" },
 ];
 
-function scoreOf(props, s) {
+// Fast open-space tier for LOW zoom (block zoom runs the exact fit engine instead). No user knobs: it uses the
+// biggest unit in the catalog and a fixed standard margin, so "promising" is consistent for everyone.
+const MAX_UNIT = ADU_MODELS.reduce((a, m) => (m.widthFt * m.lengthFt > a.w * a.l ? { w: m.widthFt, l: m.lengthFt } : a), { w: 0, l: 0 });
+const STANDARD_MARGIN = 1.6;
+function scoreOf(props) {
   const lot = (props.PARCEL_ACRES || 0) * SQFT_PER_ACRE;
   const open = Math.max(0, lot - (props.BLDG_SQFT || 0));
   const yard = open * BACKYARD_FRAC;          // sq ft of usable back yard
-  const uw = s.unitW || 14, ul = s.unitL || 66;
-  const unit = uw * ul;                       // home footprint sq ft
-  const margin = s.greenMargin || 1.6;
-  // Dimensional check: the parcel data only gives areas, not yard shape, so we
-  // estimate the buildable yard as a square and require the home's LONG side to
-  // physically span it. This is why a long single-wide is harder to place than
-  // its raw area implies (a yard can have enough sq ft yet be too short).
+  const unit = MAX_UNIT.w * MAX_UNIT.l;       // home footprint sq ft
+  // Dimensional check: the parcel data only gives areas, not yard shape, so we estimate the buildable yard as a
+  // square and require the home's LONG side to physically span it (enough sq ft isn't enough if the yard is short).
   const yardSpan = Math.sqrt(yard);           // est. yard dimension (ft)
-  const homeLong = Math.max(uw, ul);
+  const homeLong = Math.max(MAX_UNIT.w, MAX_UNIT.l);
   if (yard < unit || yardSpan < homeLong) return "red";
-  if (yard < unit * margin || yardSpan < homeLong * Math.sqrt(margin)) return "yellow";
+  if (yard < unit * STANDARD_MARGIN || yardSpan < homeLong * Math.sqrt(STANDARD_MARGIN)) return "yellow";
   return "green";
 }
 
 // parcel color = equity-lead tier. Knocks/customers never recolor the parcel — only the flag.
-const styleFor = (feat, s) => {
+const styleFor = (feat, _s) => {   // _s (settings) kept for call-site symmetry; not needed now that color = tier only
   const p = feat.properties;
   // Only the lots that WORK are highlighted; everything else is plain satellite (still tappable).
   const winner = p._fitStatus ? p._fitStatus === "fits" : p._tier === "green";
@@ -137,12 +127,6 @@ const styleFor = (feat, s) => {
   return { color: c, weight: 2, opacity: 1, fillColor: c, fillOpacity: 0.82 };  // border matches the inside
 };
 const PENDING_COLOR = "#6b7076";  // fits, not yet rated (neutral, on-brand with the graphite UI)
-// darken a #rrggbb toward black by factor f (fill is a darker shade of the border color)
-const darken = (hex, f = 0.55) => {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.round(((n >> 16) & 255) * f), g = Math.round(((n >> 8) & 255) * f), b = Math.round((n & 255) * f);
-  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
-};
 // invisible fill so non-winners stay clickable (tap any house at a door) without cluttering the map
 const HIDDEN_STYLE = { stroke: false, fill: true, fillColor: "#16b866", fillOpacity: 0.001 };
 
@@ -263,7 +247,7 @@ export default function App({ profile, signOut } = {}) {
   const resolveVerdict = (key, props) =>
     flagsRef.current[key] === "no_fit" ? "red"
       : flagsRef.current[key] === "fits" ? "green"
-        : scoreOf(props, settingsRef.current);
+        : scoreOf(props);
 
   const touch = (key) => { dirtyRef.current.add(key); return (verRef.current[key] = (verRef.current[key] || 0) + 1); };
 
@@ -1056,39 +1040,6 @@ export default function App({ profile, signOut } = {}) {
                   </div>
                 </>
               )}
-              <div className="phd">Trailer</div>
-              <div className="presets">
-                {PRESETS.map((pr) => {
-                  const on = settings.unitW === pr.w && settings.unitL === pr.l;
-                  return (
-                    <button key={pr.key} className={"preset" + (on ? " on" : "")}
-                      onClick={() => setSettings((s) => ({ ...s, unitW: pr.w, unitL: pr.l, unitH: pr.h }))}>
-                      <b>{pr.label}</b><span>{pr.w} × {pr.l} ft</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="setrow">
-                <label>Width (ft)<input type="number" min="1" value={settings.unitW} onChange={(e) => setSetting("unitW", Number(e.target.value) || 0)} /></label>
-                <label>Length (ft)<input type="number" min="1" value={settings.unitL} onChange={(e) => setSetting("unitL", Number(e.target.value) || 0)} /></label>
-                <label>Height (ft)<input type="number" min="1" value={settings.unitH} onChange={(e) => setSetting("unitH", Number(e.target.value) || 0)} /></label>
-              </div>
-              <div className="preview">{(() => {
-                const lotW = 62, lotL = 108, sc = 2.3;
-                const W = lotW * sc, H = lotL * sc;
-                const tw = Math.min(settings.unitW, lotW) * sc, tl = Math.min(settings.unitL, lotL) * sc;
-                const fits = settings.unitW <= lotW && settings.unitL <= lotL;
-                return (
-                  <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="previewsvg">
-                    <rect x="1" y="1" width={W - 2} height={H - 2} rx="7" fill="#eef1f0" stroke="#cdd5d1" strokeDasharray="5 4" />
-                    <text x={W / 2} y="15" textAnchor="middle" className="pvlabel">≈ 0.15-acre lot</text>
-                    <rect x={(W - tw) / 2} y={H - tl - 12} width={tw} height={tl} rx="3" fill={fits ? "#1fa36b" : "#dd5145"} opacity="0.9" />
-                    <text x={W / 2} y={H - tl / 2 - 9} textAnchor="middle" className="pvunit">{settings.unitW}×{settings.unitL}</text>
-                  </svg>
-                );
-              })()}</div>
-              <p className="snote">Footprint {(settings.unitW * settings.unitL).toLocaleString()} sqft. A bigger unit raises the bar, so fewer yards score green.</p>
-
               <div className="phd">ADU placement rules</div>
               <label className="selrow"><span>City / jurisdiction</span>
                 <select value={settings.aduCity} onChange={(e) => setCity(e.target.value)}>
@@ -1127,14 +1078,6 @@ export default function App({ profile, signOut } = {}) {
                 </select>
               </label>
               <p className="snote">Your own placement practice, not code (the legal minimum off the house is 6 ft).</p>
-
-              <div className="phd">Scoring</div>
-              <div className="seg3">
-                {STRICTNESS.map((o) => (
-                  <button key={o.key} className={settings.greenMargin === o.key ? "on" : ""} onClick={() => setSetting("greenMargin", o.key)}>{o.label}</button>
-                ))}
-              </div>
-              <p className="snote">How much room beyond the trailer a yard needs before it counts as green.</p>
 
               <div className="phd">Map</div>
               <div className="seg3">
