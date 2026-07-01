@@ -77,11 +77,16 @@ export function pickHouse(parcel, buildings) {
 
 // One call for a tapped parcel: fetch its footprints + roads, detect house/street, build the zone, and test
 // every model. Returns a UI-ready result. Fails closed to needs-check when we can't apply the rules.
-export async function computeParcelFit(parcel, { models, profile, overlay }) {
+export async function computeParcelFit(parcel, opts) {
   const bbox = parcelBbox(parcel);
-  const frame = makeFrame(turfCentroid(parcel).geometry.coordinates);
   const [buildings, roads] = await Promise.all([fetchBuildings(bbox), fetchRoads(bbox)]);
+  return fitParcelWith(parcel, buildings, roads, opts);
+}
 
+// Same computation but against already-fetched building/road sets — so a whole viewport can be scored from one
+// pair of fetches (used to color the map at block zoom). Pure/sync.
+export function fitParcelWith(parcel, buildings, roads, { models, profile, overlay }) {
+  const frame = makeFrame(turfCentroid(parcel).geometry.coordinates);
   const { convex, ring, lotSqft } = prepParcel(parcel, frame);
   const base = { lotSqft, road: null };
   // hard eligibility gate FIRST: too-small lot is a flat no, regardless of what's back there.

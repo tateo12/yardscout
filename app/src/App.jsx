@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
-import { computeParcelFit } from "./lib/geo";
+import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads } from "./lib/geo";
 import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS } from "./lib/adu";
 import { sharePdf } from "./lib/share";
 import L from "leaflet";
@@ -15,6 +15,7 @@ const PARCELS_URL =
 const SQFT_PER_ACRE = 43560;
 const BACKYARD_FRAC = 0.5;
 const MIN_ZOOM = 15;       // below this a viewport holds more parcels than the page budget can fully cover
+const FIT_ZOOM = 17;       // at/above this (block level) the map switches to the exact geometry-driven fit color
 const PAGE = 2000;         // ArcGIS per-request cap; we paginate to cover the whole viewport
 const MAX_PAGES = 4;       // up to 8000 parcels per view before we ask the user to zoom in
 const RENTAL_COLOR = "#64748b";
@@ -98,9 +99,13 @@ const styleFor = (feat, s) => {
   const p = feat.properties;
   if (s.highlightRentals && isRental(p))
     return { color: RENTAL_COLOR, weight: 1.3, fillColor: RENTAL_COLOR, fillOpacity: 0.5 };
-  const c = TIER[p._tier].color;
+  const c = p._fitColor || TIER[p._tier].color;   // block-zoom fit color wins when computed
   return { color: c, weight: 1, fillColor: c, fillOpacity: 0.3 };
 };
+// map colors for the geometry-driven fit at block zoom: fits -> its fade color, no-fit/ineligible -> red,
+// needs-check -> slate (unknown, not a no).
+const FIT_MAP_COLOR = { "no-fit": "#dd5145", "not-eligible": "#dd5145", "needs-check": "#64748b", error: "#64748b" };
+const colorForFit = (r) => (r.status === "fits" ? r.color : FIT_MAP_COLOR[r.status] || "#64748b");
 
 // flag marker (Option D): pole-left flag for CUSTOMERS, recolored via currentColor. Size is baked into the
 // icon so the clickable area always matches what you see; icons regenerate on zoom instead of CSS-scaling.
@@ -153,6 +158,10 @@ export default function App({ profile, signOut } = {}) {
   const orgId = profile?.org_id;
   const orgIdRef = useRef(orgId);
   const reqToken = useRef(0);
+  const fitToken = useRef(0);
+  const fitCacheRef = useRef(new Map());   // parcelId|rulesSig -> map color (session cache)
+  const aduProfileRef = useRef(KEARNS_PROFILE);
+  const aduOverlayRef = useRef(BUSINESS_OVERLAY);
   const meMarker = useRef(null);
   const mvRef = useRef(null);
 
@@ -387,6 +396,35 @@ export default function App({ profile, signOut } = {}) {
     }
   };
 
+  // At block zoom, color every visible lot by the exact geometry fit (one buildings/roads fetch for the whole
+  // viewport, then compute each parcel locally; cache per parcel+rules). Below FIT_ZOOM, revert to the fast score.
+  const computeFits = useCallback(async () => {
+    const map = mapRef.current, layer = layerRef.current;
+    if (!map || !layer) return;
+    if (map.getZoom() < FIT_ZOOM) {
+      layer.eachLayer((l) => { if (l.feature.properties._fitColor) { delete l.feature.properties._fitColor; l.setStyle(styleFor(l.feature, settingsRef.current)); } });
+      return;
+    }
+    const b = map.getBounds();
+    const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+    const token = ++fitToken.current;
+    let buildings, roads;
+    try { [buildings, roads] = await Promise.all([fetchBuildings(bbox), fetchRoads(bbox)]); }
+    catch { return; }
+    if (token !== fitToken.current || !layerRef.current) return; // a newer move superseded this
+    const opts = { models: ADU_MODELS, profile: aduProfileRef.current, overlay: aduOverlayRef.current };
+    const sig = JSON.stringify([aduProfileRef.current, aduOverlayRef.current]);
+    layerRef.current.eachLayer((l) => {
+      const p = l.feature.properties, key = p._key;
+      if (flagsRef.current[key]) return;           // a rep flag override wins over the computed fit
+      const ck = key + "|" + sig;
+      let col = fitCacheRef.current.get(ck);
+      if (col === undefined) { col = colorForFit(fitParcelWith(l.feature, buildings, roads, opts)); fitCacheRef.current.set(ck, col); }
+      p._fitColor = col;
+      l.setStyle(styleFor(l.feature, settingsRef.current));
+    });
+  }, []);
+
   const loadViewport = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -423,8 +461,9 @@ export default function App({ profile, signOut } = {}) {
       renderParcels(all);
       setCapped(more);   // still more beyond our page budget -> suggest zooming in
       setLoading(false);
+      computeFits();     // block-zoom: color lots by the real geometry fit
     })();
-  }, [renderParcels]);
+  }, [renderParcels, computeFits]);
 
   useEffect(() => {
     let lastView = null;
@@ -529,6 +568,9 @@ export default function App({ profile, signOut } = {}) {
     houseSeparationFt: settings.houseSeparationFt ?? BUSINESS_OVERLAY.houseSeparationFt,
     backinMinSideGapFt: settings.backinMinSideGapFt ?? BUSINESS_OVERLAY.backinMinSideGapFt,
   }), [settings.houseSeparationFt, settings.backinMinSideGapFt]);
+
+  // keep the fit-engine refs current and re-color the map when the rules change
+  useEffect(() => { aduProfileRef.current = aduProfile; aduOverlayRef.current = aduOverlay; computeFits(); }, [aduProfile, aduOverlay, computeFits]);
 
   // on tap, run the ADU fit pipeline for the selected parcel (fetch footprints/roads -> which models fit)
   useEffect(() => {
