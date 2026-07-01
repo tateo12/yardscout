@@ -166,13 +166,16 @@ active). `default_model_id` points here. Editing bumps the **catalog version** i
 - map style, highlight-rentals, set-home → **stay per-device**.
 - export / reset / clear → unchanged (export is already shared-aware).
 
-### Settings tab layout (by permission)
-- **Owner — "Company rules":** Jurisdictions (list; add/edit city profiles; set default), Business rules,
-  Catalog + default model, Prospect rule. Writes to Supabase, broadcasts to the crew, invalidates the fit cache.
-- **Everyone — "My app":** map style, highlight-rentals, set home, export data.
-- A rep opening a company rule sees it **read-only** ("managed by your admin").
-- New DB objects needed (future migration): `jurisdiction_profiles` table, `org_settings` row, and (P2)
-  `adu_models` — all with owner-write / org-read RLS, mirroring the existing pattern.
+### Settings tab layout — SINGLE-OWNER NOW, per-rep later (Tate 2026-06-30)
+Build only what one owner-operator needs. **No per-rep read-only gating UI yet** — that's a later phase when a
+real crew exists. RLS still owner-write / org-read at the DB (cheap, future-proof), but the app shows the one
+owner everything as editable; don't build the "managed by your admin" rep view now.
+- **Company rules** (the one owner edits): Jurisdictions (list; add/edit city profiles; set default), Business
+  rules, Catalog + default model, Prospect rule. Writes to Supabase; invalidates the fit cache.
+- **My app:** map style, highlight-rentals, set home, export data.
+- New DB objects (future migration): `jurisdiction_profiles` table, `org_settings` row, and (P2) `adu_models` —
+  owner-write / org-read RLS, mirroring the existing pattern.
+- **Per-rep layer (LATER):** read-only rep views, role management, seat-scoped visibility.
 
 ## Geometry validation (test fixtures — build against these before trusting output)
 
