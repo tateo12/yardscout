@@ -111,7 +111,7 @@ const styleFor = (feat, s) => {
   const winner = p._fitStatus ? p._fitStatus === "fits" : p._tier === "green";
   if (!winner) return HIDDEN_STYLE;
   const c = p._fitColor || "#16b866";
-  return { color: "#0a3d24", weight: 2, fillColor: c, fillOpacity: 0.5 };  // dark edge + vivid fill = pops on satellite
+  return { color: "#ffffff", weight: 3, opacity: 1, fillColor: c, fillOpacity: 0.62 };  // white casing + vivid fill = pops on any satellite
 };
 // invisible fill so non-winners stay clickable (tap any house at a door) without cluttering the map
 const HIDDEN_STYLE = { stroke: false, fill: true, fillColor: "#16b866", fillOpacity: 0.001 };
