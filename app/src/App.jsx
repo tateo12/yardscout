@@ -452,6 +452,25 @@ export default function App({ profile, signOut } = {}) {
     return () => { clearTimeout(t); map.remove(); mapRef.current = null; layerRef.current = null; markersRef.current = null; idToLayer.current = {}; };
   }, [loadViewport]);
 
+  // auto-update: GitHub Pages caches index.html for 10 min (not changeable there). version.json is fetched
+  // no-store, so a new deploy is detected and the app reloads itself past the cache. Checks on load + refocus.
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const r = await fetch(`${import.meta.env.BASE_URL}version.json?t=${Date.now()}`, { cache: "no-store" });
+        if (!r.ok) return;
+        const { version } = await r.json();
+        if (version && typeof __APP_VERSION__ !== "undefined" && version !== __APP_VERSION__) {
+          window.location.replace(`${import.meta.env.BASE_URL}?r=${Date.now()}`);
+        }
+      } catch { /* offline — ignore */ }
+    };
+    check();
+    const onVis = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
   // pull-to-refresh: drag down (not on the map/3D) to reload. Reloads latest data + build; map view is restored.
   useEffect(() => {
     const THRESH = 70;
