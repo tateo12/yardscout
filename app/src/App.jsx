@@ -473,7 +473,7 @@ export default function App({ profile, signOut } = {}) {
       if (p > 3 && e.cancelable) e.preventDefault();
     };
     const onEnd = () => {
-      if (ptr.current.active && pullRef.current >= THRESH) { setRefreshing(true); setTimeout(() => window.location.reload(), 200); }
+      if (ptr.current.active && pullRef.current >= THRESH) { setRefreshing(true); setTimeout(() => window.location.replace(import.meta.env.BASE_URL + "?r=" + Date.now()), 200); }
       else reset();
     };
     document.addEventListener("touchstart", onStart, { passive: true });
