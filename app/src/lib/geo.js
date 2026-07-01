@@ -82,11 +82,14 @@ export async function computeParcelFit(parcel, { models, profile, overlay }) {
   const frame = makeFrame(turfCentroid(parcel).geometry.coordinates);
   const [buildings, roads] = await Promise.all([fetchBuildings(bbox), fetchRoads(bbox)]);
 
+  const { convex, ring, lotSqft } = prepParcel(parcel, frame);
+  const base = { lotSqft, road: null };
+  // hard eligibility gate FIRST: too-small lot is a flat no, regardless of what's back there.
+  if (lotSqft < (profile.minLotSqft ?? 0)) return { status: "not-eligible", reason: "below_min_lot", ...base };
+
   const { house } = pickHouse(parcel, buildings);
   const { frontDir, road } = frontDirection(parcel, roads, frame);
-  const { convex, ring, lotSqft } = prepParcel(parcel, frame);
-
-  const base = { lotSqft, road };
+  base.road = road;
   if (!house) return { status: "needs-check", reason: "no_house_found", ...base };
   if (!frontDir) return { status: "needs-check", reason: "no_street_found", ...base };
   if (!convex) return { status: "needs-check", reason: "nonconvex_parcel", ...base };

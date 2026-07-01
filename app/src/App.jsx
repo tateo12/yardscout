@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
 import { computeParcelFit } from "./lib/geo";
-import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL } from "./lib/adu";
+import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS } from "./lib/adu";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
@@ -18,7 +18,12 @@ const PAGE = 2000;         // ArcGIS per-request cap; we paginate to cover the w
 const MAX_PAGES = 4;       // up to 8000 parcels per view before we ask the user to zoom in
 const RENTAL_COLOR = "#64748b";
 const SET_KEY = "yardscout.settings.v1";
-const DEFAULT_SETTINGS = { unitW: 14, unitL: 66, unitH: 13.5, greenMargin: 1.6, highlightRentals: true, mapStyle: "satellite", home: null };
+const DEFAULT_SETTINGS = {
+  unitW: 14, unitL: 66, unitH: 13.5, greenMargin: 1.6, highlightRentals: true, mapStyle: "satellite", home: null,
+  // ADU placement rules (single-owner, local for now; shared DB comes with the per-rep phase)
+  aduCity: "slco-kearns", minLotSqft: 7000, sideFt: 5, rearFt: 10, frontBehindFacadeFt: 10,
+  houseSeparationFt: 20, backinMinSideGapFt: 16,
+};
 const PRESETS = [
   { key: "single", label: "Single-wide", w: 14, l: 66, h: 13.5 },
   { key: "park", label: "Park model", w: 12, l: 35, h: 13.5 },
@@ -281,6 +286,10 @@ export default function App({ profile, signOut } = {}) {
   }, [settings]);
 
   const setSetting = (k, v) => setSettings((s) => ({ ...s, [k]: v }));
+  const setCity = (key) => setSettings((s) => {
+    const p = CITY_PROFILES.find((c) => c.key === key);
+    return p ? { ...s, aduCity: key, minLotSqft: p.minLotSqft, sideFt: p.sideFt, rearFt: p.rearFt, frontBehindFacadeFt: p.frontBehindFacadeFt } : { ...s, aduCity: key };
+  });
   const resetSettings = () => setSettings(DEFAULT_SETTINGS);
   const setHome = () => {
     const m = mapRef.current; if (!m) return;
@@ -442,18 +451,29 @@ export default function App({ profile, signOut } = {}) {
     baseLayerRef.current = L.tileLayer(TILES[settings.mapStyle] || TILES.satellite, { maxZoom: 20 }).addTo(map);
   }, [settings.mapStyle]);
 
+  // ADU rules come from Settings (fall back to the shipped Kearns config)
+  const aduProfile = useMemo(() => ({
+    name: settings.aduCity, minLotSqft: settings.minLotSqft ?? KEARNS_PROFILE.minLotSqft,
+    sideFt: settings.sideFt ?? KEARNS_PROFILE.sideFt, rearFt: settings.rearFt ?? KEARNS_PROFILE.rearFt,
+    frontYardFt: KEARNS_PROFILE.frontYardFt, frontBehindFacadeFt: settings.frontBehindFacadeFt ?? KEARNS_PROFILE.frontBehindFacadeFt,
+  }), [settings.aduCity, settings.minLotSqft, settings.sideFt, settings.rearFt, settings.frontBehindFacadeFt]);
+  const aduOverlay = useMemo(() => ({
+    houseSeparationFt: settings.houseSeparationFt ?? BUSINESS_OVERLAY.houseSeparationFt,
+    backinMinSideGapFt: settings.backinMinSideGapFt ?? BUSINESS_OVERLAY.backinMinSideGapFt,
+  }), [settings.houseSeparationFt, settings.backinMinSideGapFt]);
+
   // on tap, run the ADU fit pipeline for the selected parcel (fetch footprints/roads -> which models fit)
   useEffect(() => {
     if (selected == null) { setAduFit(null); setAduLoading(false); return; }
     const feat = idToLayer.current[selected]?.feature;
     if (!feat?.geometry) { setAduFit(null); return; }
     let alive = true; setAduFit(null); setAduLoading(true);
-    computeParcelFit(feat, { models: ADU_MODELS, profile: KEARNS_PROFILE, overlay: BUSINESS_OVERLAY })
+    computeParcelFit(feat, { models: ADU_MODELS, profile: aduProfile, overlay: aduOverlay })
       .then((r) => { if (alive) setAduFit(r); })
       .catch((e) => { if (alive) setAduFit({ status: "error", reason: String(e?.message || e) }); })
       .finally(() => { if (alive) setAduLoading(false); });
     return () => { alive = false; };
-  }, [selected]);
+  }, [selected, aduProfile, aduOverlay]);
 
   const flyTo = (center, zoom = 18) => mapRef.current?.flyTo(center, zoom, { duration: 0.6 });
 
@@ -617,6 +637,9 @@ export default function App({ profile, signOut } = {}) {
                   <b>{f.model.name}</b> · {Math.round(f.clearanceFt)} ft to spare · {f.method}
                 </div>
               ))}
+              {!aduLoading && aduFit?.status === "not-eligible" && (
+                <div className="fitrow no">Not eligible — lot is {Math.round(aduFit.lotSqft).toLocaleString()} sq ft, under the {settings.minLotSqft.toLocaleString()} sq ft minimum.</div>
+              )}
               {!aduLoading && aduFit?.status === "no-fit" && <div className="fitrow no">No unit fits this yard after setbacks.</div>}
               {!aduLoading && aduFit?.status === "needs-check" && (
                 <div className="fitrow warn">Needs a look — {NEEDS_CHECK_LABEL[aduFit.reason] || aduFit.reason}.</div>
@@ -840,6 +863,45 @@ export default function App({ profile, signOut } = {}) {
                 );
               })()}</div>
               <p className="snote">Footprint {(settings.unitW * settings.unitL).toLocaleString()} sqft. A bigger unit raises the bar, so fewer yards score green.</p>
+
+              <div className="phd">ADU placement rules</div>
+              <label className="selrow"><span>City / jurisdiction</span>
+                <select value={settings.aduCity} onChange={(e) => setCity(e.target.value)}>
+                  {CITY_PROFILES.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
+                </select>
+              </label>
+              <label className="selrow"><span>Min lot size</span>
+                <select value={settings.minLotSqft} onChange={(e) => setSetting("minLotSqft", Number(e.target.value))}>
+                  {RULE_OPTIONS.minLotSqft.map((v) => <option key={v} value={v}>{v.toLocaleString()} sq ft</option>)}
+                </select>
+              </label>
+              <label className="selrow"><span>Side setback</span>
+                <select value={settings.sideFt} onChange={(e) => setSetting("sideFt", Number(e.target.value))}>
+                  {RULE_OPTIONS.sideFt.map((v) => <option key={v} value={v}>{v} ft</option>)}
+                </select>
+              </label>
+              <label className="selrow"><span>Rear setback</span>
+                <select value={settings.rearFt} onChange={(e) => setSetting("rearFt", Number(e.target.value))}>
+                  {RULE_OPTIONS.rearFt.map((v) => <option key={v} value={v}>{v} ft</option>)}
+                </select>
+              </label>
+              <label className="selrow"><span>Behind house front</span>
+                <select value={settings.frontBehindFacadeFt} onChange={(e) => setSetting("frontBehindFacadeFt", Number(e.target.value))}>
+                  {RULE_OPTIONS.frontBehindFacadeFt.map((v) => <option key={v} value={v}>{v} ft</option>)}
+                </select>
+              </label>
+              <p className="snote">Loaded from the selected city (from county code — verify locally; state ADU rules are changing).</p>
+              <label className="selrow"><span>Distance from house</span>
+                <select value={settings.houseSeparationFt} onChange={(e) => setSetting("houseSeparationFt", Number(e.target.value))}>
+                  {RULE_OPTIONS.houseSeparationFt.map((v) => <option key={v} value={v}>{v} ft</option>)}
+                </select>
+              </label>
+              <label className="selrow"><span>Back-in vs. crane</span>
+                <select value={settings.backinMinSideGapFt} onChange={(e) => setSetting("backinMinSideGapFt", Number(e.target.value))}>
+                  {RULE_OPTIONS.backinMinSideGapFt.map((v) => <option key={v} value={v}>{v} ft side yard</option>)}
+                </select>
+              </label>
+              <p className="snote">Your own placement practice, not code (the legal minimum off the house is 6 ft).</p>
 
               <div className="phd">Scoring</div>
               <div className="seg3">

@@ -21,6 +21,21 @@ export const BUSINESS_OVERLAY = {
   backinMinSideGapFt: 16,    // side-yard width to back a ~14ft unit in vs. crane it
 };
 
+// City profiles the owner can switch between (the master dropdown). Add cities as the business expands.
+export const CITY_PROFILES = [
+  { key: "slco-kearns", name: "Salt Lake County — Kearns", minLotSqft: 7000, sideFt: 5, rearFt: 10, frontYardFt: 20, frontBehindFacadeFt: 10 },
+];
+
+// Curated dropdown options — no free-text.
+export const RULE_OPTIONS = {
+  minLotSqft: [6000, 7000, 8000, 10000],
+  sideFt: [5, 8, 10],
+  rearFt: [10, 15, 20],
+  frontBehindFacadeFt: [5, 10, 15],
+  houseSeparationFt: [6, 10, 15, 20, 25],
+  backinMinSideGapFt: [12, 14, 16, 18, 20],
+};
+
 export const NEEDS_CHECK_LABEL = {
   no_house_found: "couldn't find the house here",
   no_street_found: "couldn't find the street",
