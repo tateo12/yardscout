@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
-import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads } from "./lib/geo";
+import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership } from "./lib/geo";
 import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS } from "./lib/adu";
+import { toOwnerRecord } from "./lib/owner";
 import { sharePdf } from "./lib/share";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -33,6 +34,33 @@ const loadFits = () => {
   try { const d = JSON.parse(localStorage.getItem(FITS_KEY)); return { map: new Map(Object.entries(d?.entries || {})), sig: d?.sig || null }; }
   catch { return { map: new Map(), sig: null }; }
 };
+// owner/equity sidecar cache: parcelId -> OwnerRecord (from owner.toOwnerRecord). Kept separate from the fit cache
+// so live county data never entangles with the geometry judgments. Short TTL so field reps don't see stale ownership.
+const OWNER_KEY = "yardscout.owners.v1";
+const OWNER_TTL = 7 * 864e5;   // 7 days
+const loadOwners = () => {
+  try {
+    const d = JSON.parse(localStorage.getItem(OWNER_KEY)); const now = Date.now(); const m = new Map();
+    for (const [k, v] of Object.entries(d?.entries || {})) if (now - (v.fetchedAt || 0) <= OWNER_TTL) m.set(k, v);
+    return m;
+  } catch { return new Map(); }
+};
+// equity-likelihood tiers: shade the fitting lots by lead quality (hot = long-held/deep equity). Estimate, not a $ amount.
+const EQ = {
+  hot:  { color: "#e8590c", label: "Hot lead" },
+  warm: { color: "#2f9e5f", label: "Warm lead" },
+  cool: { color: "#7d94a0", label: "Lower priority" },
+};
+// read an owner record only if still within TTL; purge it on read otherwise (enforces freshness everywhere, not just at load)
+const freshOwner = (cache, key) => {
+  const r = cache.get(key);
+  if (!r) return null;
+  if (Date.now() - (r.fetchedAt || 0) > OWNER_TTL) { cache.delete(key); return null; }
+  return r;
+};
+const ownerDisplay = (s) => String(s || "").split(";")[0].replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim()
+  .toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase());
+const fmtAsOf = (ts) => { try { return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); } catch { return "recently"; } };
 
 const PRESETS = [
   { key: "single", label: "Single-wide", w: 14, l: 66, h: 13.5 },
@@ -110,7 +138,9 @@ const styleFor = (feat, s) => {
   // A judged lot uses _fitStatus; an unjudged one falls back to the fast open-space score (green = promising).
   const winner = p._fitStatus ? p._fitStatus === "fits" : p._tier === "green";
   if (!winner) return HIDDEN_STYLE;
-  const c = darken(p._fitColor || "#16b866", 0.66);   // one darker shade of the fit hue for BOTH border and fill
+  // Among lots that FIT, shade by equity-lead tier when we have owner data; otherwise fall back to the fit hue.
+  const base = p._ownerTier ? EQ[p._ownerTier].color : (p._fitColor || "#16b866");
+  const c = darken(base, 0.66);   // one darker shade for BOTH border and fill
   return { color: c, weight: 2, opacity: 1, fillColor: c, fillOpacity: 0.82 };  // border matches the inside; darker = reads from a broad view
 };
 // darken a #rrggbb toward black by factor f (fill is a darker shade of the border color)
@@ -177,6 +207,10 @@ export default function App({ profile, signOut } = {}) {
   const fitCacheRef = useRef(null);        // parcelId -> {status, color}; persisted, scoped to sigRef
   const sigRef = useRef(null);
   if (fitCacheRef.current === null) { const { map, sig } = loadFits(); fitCacheRef.current = map; sigRef.current = sig; }
+  const ownerCacheRef = useRef(null);      // parcelId -> OwnerRecord; persisted, TTL-scoped (independent of fits)
+  const ownerToken = useRef(0);
+  if (ownerCacheRef.current === null) ownerCacheRef.current = loadOwners();
+  const [ownerVer, setOwnerVer] = useState(0);   // bumps when owner data lands so the detail card re-reads the ref
   const aduProfileRef = useRef(KEARNS_PROFILE);
   const aduOverlayRef = useRef(BUSINESS_OVERLAY);
   const meMarker = useRef(null);
@@ -362,6 +396,8 @@ export default function App({ profile, signOut } = {}) {
       p._tier = resolveVerdict(p._key, p);
       const cached = !flagsRef.current[p._key] && fitCacheRef.current.get(p._key);   // paint judged lots instantly (no flicker)
       if (cached) { p._fitStatus = cached.status; p._fitColor = cached.color; }
+      const own = freshOwner(ownerCacheRef.current, p._key);   // cached (non-stale) equity tier -> instant tier shading
+      if (own) p._ownerTier = own.tier; else delete p._ownerTier;
     });
     const layer = L.geoJSON({ type: "FeatureCollection", features: rawFeatures }, {
       style: (f) => styleFor(f, settingsRef.current),
@@ -447,6 +483,40 @@ export default function App({ profile, signOut } = {}) {
     persistFits();
   }, []);
 
+  const persistOwners = () => {
+    // evict from the LIVE map (not just the snapshot) so the in-memory cache can't grow without bound
+    if (ownerCacheRef.current.size > 4000) {
+      const keep = [...ownerCacheRef.current.entries()].sort((a, b) => (b[1].fetchedAt || 0) - (a[1].fetchedAt || 0)).slice(0, 4000);
+      ownerCacheRef.current = new Map(keep);
+    }
+    try { localStorage.setItem(OWNER_KEY, JSON.stringify({ entries: Object.fromEntries(ownerCacheRef.current) })); } catch { /* quota */ }
+  };
+
+  // At block zoom, enrich visible lots with county owner/equity data ONCE (batched by parcel-id), cache with a TTL,
+  // and re-shade the fitting lots by lead tier. Best-effort: if the county server is down, lots keep the fit hue.
+  const computeOwners = useCallback(async () => {
+    const map = mapRef.current;
+    if (!map || !layerRef.current || map.getZoom() < FIT_ZOOM) return;
+    const now = Date.now(); const need = [];
+    layerRef.current.eachLayer((l) => {
+      const k = l.feature.properties._key; const rec = ownerCacheRef.current.get(k);
+      if (!rec || now - (rec.fetchedAt || 0) > OWNER_TTL) need.push(k);
+    });
+    if (!need.length) return;
+    const token = ++ownerToken.current;
+    let raw;
+    try { raw = await fetchOwnership(need); } catch { return; }
+    if (token !== ownerToken.current || !layerRef.current) return;   // a newer move superseded this
+    const nd = new Date();
+    raw.forEach((attrs, id) => ownerCacheRef.current.set(id, toOwnerRecord(attrs, nd)));
+    layerRef.current.eachLayer((l) => {
+      const p = l.feature.properties, rec = ownerCacheRef.current.get(p._key);
+      if (rec) { p._ownerTier = rec.tier; if (!flagsRef.current[p._key]) l.setStyle(styleFor(l.feature, settingsRef.current)); }
+    });
+    persistOwners();
+    setOwnerVer((v) => v + 1);
+  }, []);
+
   const loadViewport = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -484,8 +554,9 @@ export default function App({ profile, signOut } = {}) {
       setCapped(more);   // still more beyond our page budget -> suggest zooming in
       setLoading(false);
       computeFits();     // block-zoom: color lots by the real geometry fit
+      computeOwners();   // then enrich with county owner/equity data and re-shade winners by lead tier
     })();
-  }, [renderParcels, computeFits]);
+  }, [renderParcels, computeFits, computeOwners]);
 
   useEffect(() => {
     let lastView = null;
@@ -615,6 +686,25 @@ export default function App({ profile, signOut } = {}) {
     return () => { alive = false; };
   }, [selected, aduProfile, aduOverlay]);
 
+  // ensure owner/equity data for the tapped parcel (fills the card even if batch enrichment hasn't reached it)
+  useEffect(() => {
+    if (selected == null) return;
+    const key = String(selected), rec = ownerCacheRef.current.get(key);
+    if (rec && Date.now() - (rec.fetchedAt || 0) <= OWNER_TTL) return;
+    let alive = true;
+    fetchOwnership([key]).then((raw) => {
+      const attrs = raw.get(key);
+      if (!alive || !attrs) return;
+      const r = toOwnerRecord(attrs);
+      ownerCacheRef.current.set(key, r);
+      persistOwners();
+      setOwnerVer((v) => v + 1);
+      const l = idToLayer.current[key];
+      if (l && !flagsRef.current[key]) { l.feature.properties._ownerTier = r.tier; l.setStyle(styleFor(l.feature, settingsRef.current)); }
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [selected]);
+
   const flyTo = (center, zoom = 18) => mapRef.current?.flyTo(center, zoom, { duration: 0.6 });
 
   const record = (key, outcome, props, center) => {
@@ -717,6 +807,10 @@ export default function App({ profile, signOut } = {}) {
 
   const sel = selected != null ? features.find((p) => p._key === selected) : null;
   const selKnock = selected != null ? knocks[selected] : null;
+  const selOwner = useMemo(() => {
+    void ownerVer;   // re-read the ref when owner data lands (batch enrich or on-demand fetch)
+    return selected != null ? freshOwner(ownerCacheRef.current, String(selected)) : null;
+  }, [selected, ownerVer]);
 
   const TABS = [
     { key: "map", label: "Map" },
@@ -750,9 +844,9 @@ export default function App({ profile, signOut } = {}) {
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3.4" /><path d="M12 2v3.2M12 18.8V22M2 12h3.2M18.8 12H22" /></svg>
           </button>
           <div className="legend">
-            <span><i style={{ background: TIER.green.color }} />Room</span>
-            <span><i style={{ background: TIER.yellow.color }} />Tight</span>
-            <span><i style={{ background: TIER.red.color }} />No room</span>
+            <span><i style={{ background: darken(EQ.hot.color, 0.66) }} />Hot lead</span>
+            <span><i style={{ background: darken(EQ.warm.color, 0.66) }} />Warm</span>
+            <span><i style={{ background: darken(EQ.cool.color, 0.66) }} />Lower</span>
             {settings.highlightRentals && <span><i style={{ background: RENTAL_COLOR }} />Rental</span>}
           </div>
           {sel && (
@@ -766,6 +860,21 @@ export default function App({ profile, signOut } = {}) {
                 <div><b>{(sel.BLDG_SQFT || 0).toLocaleString()}</b><span>house sqft</span></div>
                 <div><b>{Math.round((sel.PARCEL_ACRES || 0) * SQFT_PER_ACRE - (sel.BLDG_SQFT || 0)).toLocaleString()}</b><span>open sqft</span></div>
               </div>
+              {selOwner && (
+                <div className="owner">
+                  <div className="ownhd">
+                    <span className="eqchip" style={{ background: EQ[selOwner.tier].color }}>{EQ[selOwner.tier].label}</span>
+                    <span className={"occ " + selOwner.occupancy}>{selOwner.occupancy === "investor" ? "Investor" : selOwner.occupancy === "owner-occupant" ? "Owner-occupied" : "Owner unknown"}</span>
+                  </div>
+                  {selOwner.ownerName && <div className="ownname">{ownerDisplay(selOwner.ownerName)}</div>}
+                  <div className="ownmeta">
+                    <span>{selOwner.tenureYrs != null ? `Owned ${selOwner.tenureYrs} yr${selOwner.tenureYrs === 1 ? "" : "s"}` : "Move-in date unknown"}</span>
+                    {selOwner.marketValue ? <span>${Math.round(selOwner.marketValue).toLocaleString()}</span> : null}
+                  </div>
+                  <div className="ownpitch">{selOwner.pitch}</div>
+                  <div className="owndisc">Equity estimate from tenure + value, not an actual amount · as of {fmtAsOf(selOwner.fetchedAt)}</div>
+                </div>
+              )}
               <div className="dlabel">Which units fit</div>
               {aduLoading && <div className="fitrow muted">Checking the yard…</div>}
               {!aduLoading && aduFit?.status === "fits" && aduFit.fits.map((f) => (

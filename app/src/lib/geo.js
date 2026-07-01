@@ -59,6 +59,38 @@ export async function fetchRoads(bbox) {
   return esriGeojson(LAYERS.roads, { geometry: bboxStr(pad(bbox, 0.0008, 0.0008)), where: "1=1", outFields: "FULLNAME" });
 }
 
+// Salt Lake County owner/value data (different host, CORS-open to the app). See docs/QUALIFY_PLAN.md.
+// Enrich by EXACT parcel-id set (the ids already on screen) so records map 1:1 to displayed parcels — no
+// envelope/boundary mismatch, no overfetch, no maxRecordCount surprise. Best-effort: a failing chunk is skipped,
+// never thrown, so the map degrades to fit-only. POST keeps long IN() lists off the URL.
+export const COUNTY = "https://apps.saltlakecounty.gov/slcogis/rest/services/Land/MapServer/1";
+const OWNER_FIELDS = "parcel_id,own_name,own_addr,own_citystate,prop_location,date_created,taxable_value,total_full_mkt,year_built,total_sq_ft,num_housing_units,lot_use";
+
+export async function fetchOwnership(parcelIds, { chunk = 150, signal } = {}) {
+  const ids = [...new Set((parcelIds || []).filter(Boolean).map(String))];
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += chunk) chunks.push(ids.slice(i, i + chunk));
+  const out = new Map(); // parcel_id -> raw county attributes
+  let failed = 0;
+  await Promise.all(chunks.map(async (slice) => {
+    const list = slice.map((id) => `'${id.replace(/'/g, "")}'`).join(",");
+    try {
+      const body = new URLSearchParams({ f: "json", returnGeometry: "false", outFields: OWNER_FIELDS, where: `parcel_id IN (${list})` });
+      const r = await fetch(`${COUNTY}/query`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body, signal });
+      if (!r.ok) throw new Error(`county ${r.status}`);
+      const j = await r.json();
+      if (j.error) throw new Error(j.error.message);
+      for (const f of j.features || []) {
+        const a = f.attributes || {};
+        if (a.parcel_id) out.set(String(a.parcel_id), a);
+      }
+    } catch (e) { failed++; if (typeof console !== "undefined") console.warn("fetchOwnership chunk failed:", e?.message || e); }
+  }));
+  // best-effort: caller degrades to fit-only for missing ids. `partial` flags an incomplete result (some chunks failed).
+  out.partial = failed > 0;
+  return out;
+}
+
 // Pick the existing house: rank candidate footprints by area, keep those meaningfully inside the parcel.
 // Returns { house: feature|null, others: feature[] }.
 export function pickHouse(parcel, buildings) {
