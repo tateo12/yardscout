@@ -50,18 +50,32 @@ function open(ring) {
   }
   return ring;
 }
-export function isConvex(ring) {
-  const r = open(ring);
-  if (r.length < 3) return false;
-  let sign = 0;
+// Real surveyed parcels carry vertex noise: near-duplicate points and near-collinear "kinks" that aren't real
+// corners. Drop them so a rectangular-but-noisy lot reduces to its true corners (Codex: snap/clean + tolerance).
+export function cleanRing(ring, tolM = 0.3) {
+  let r = open(ring).slice();
+  r = r.filter((p, i) => len(sub(p, r[(i - 1 + r.length) % r.length])) > tolM); // drop near-duplicates
+  const out = [];
   for (let i = 0; i < r.length; i++) {
-    const a = r[i], b = r[(i + 1) % r.length], c = r[(i + 2) % r.length];
-    const cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
-    if (Math.abs(cross) < 1e-9) continue;
-    const s = Math.sign(cross);
-    if (sign === 0) sign = s; else if (s !== sign) return false;
+    const a = r[(i - 1 + r.length) % r.length], b = r[i], c = r[(i + 1) % r.length];
+    const e1 = unit(sub(b, a)), e2 = unit(sub(c, b));
+    if (Math.abs(e1[0] * e2[1] - e1[1] * e2[0]) > 0.03) out.push(b); // keep real corners (turn > ~1.7 deg)
   }
-  return true;
+  return out.length >= 3 ? out : r;
+}
+
+// Convex within a tolerance (small reflex jogs allowed): all turns share one sign, ignoring tiny ones.
+export function isConvex(ring, tol = 0.09) {
+  const r = cleanRing(ring);
+  if (r.length < 3) return false;
+  let pos = 0, neg = 0;
+  for (let i = 0; i < r.length; i++) {
+    const a = r[(i - 1 + r.length) % r.length], b = r[i], c = r[(i + 1) % r.length];
+    const e1 = unit(sub(b, a)), e2 = unit(sub(c, b));
+    const cross = e1[0] * e2[1] - e1[1] * e2[0];
+    if (cross > tol) pos++; else if (cross < -tol) neg++;
+  }
+  return pos === 0 || neg === 0;
 }
 
 // ---------- half-plane constraints: keep p where dot(p,n) <= c ----------
@@ -102,22 +116,24 @@ function clipHalfPlane(ring, { n, c }) {
 
 // ---------- build the buildable zone (local meters, convex) ----------
 // parcelLocal: ring in meters. house: {ring} in meters or null. frontDir: unit vector house->street (meters) or null.
-export function buildZone({ parcelLocal, house, frontDir, profile }) {
-  if (!isConvex(parcelLocal)) return { ok: false, reason: "nonconvex_parcel" };
-  const lotSqft = ft(1) * ft(1) * shoelaceArea(parcelLocal); // m^2 -> ft^2  (ft(1)^2 factor)
-  const minLot = profile.minLotSqft ?? 0;
-  if (lotSqft < minLot) return { ok: false, reason: "below_min_lot", lotSqft };
+// parcelLocal should be a CLEAN convex ring (see geo.prepParcel). lotSqft is the true area (from turf); if
+// omitted we fall back to the projected shoelace (fine for synthetic/test rings).
+export function buildZone({ parcelLocal, lotSqft, house, frontDir, profile }) {
+  const parcel = open(parcelLocal);
+  const areaSqft = lotSqft ?? ft(1) * ft(1) * shoelaceArea(parcel);
+  if (!isConvex(parcel)) return { ok: false, reason: "nonconvex_parcel", lotSqft: areaSqft };
+  if (areaSqft < (profile.minLotSqft ?? 0)) return { ok: false, reason: "below_min_lot", lotSqft: areaSqft };
 
-  const constraints = edgeConstraints(parcelLocal, profile, frontDir);
+  const constraints = edgeConstraints(parcel, profile, frontDir);
   // behind-the-facade rule: ADU must sit >= frontBehindFacadeFt behind the house's frontmost face
   if (house && frontDir && profile.frontBehindFacadeFt != null) {
     const houseFront = Math.max(...open(house.ring).map((p) => dot(p, frontDir)));
     constraints.push({ n: frontDir, c: houseFront - profile.frontBehindFacadeFt * FT, kind: "facade" });
   }
 
-  let zone = open(parcelLocal).slice();
-  for (const con of constraints) { zone = clipHalfPlane(zone, con); if (zone.length < 3) return { ok: false, reason: "no_room", lotSqft }; }
-  return { ok: true, zone, constraints, lotSqft };
+  let zone = parcel.slice();
+  for (const con of constraints) { zone = clipHalfPlane(zone, con); if (zone.length < 3) return { ok: false, reason: "no_room", lotSqft: areaSqft }; }
+  return { ok: true, zone, constraints, lotSqft: areaSqft };
 }
 
 // ---------- geometry for the fit test ----------
