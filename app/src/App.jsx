@@ -47,7 +47,7 @@ const loadOwners = () => {
 };
 // equity-likelihood tiers: shade the fitting lots by lead quality (hot = long-held/deep equity). Estimate, not a $ amount.
 const EQ = {
-  hot:  { color: "#f97316", label: "Hot lead" },   // bright orange (not red) — the best doors pop hardest
+  hot:  { color: "#fb5607", label: "Hot lead" },   // fire orange — the best doors look hot and pop hardest
   warm: { color: "#1f8a4c", label: "Warm lead" },
   cool: { color: "#607485", label: "Lower priority" },
 };
