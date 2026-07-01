@@ -151,7 +151,8 @@ notes, active, updated_at`. RLS: org members `select`; owner `insert/update`.
 
 ### Business overlay + behavior — `org_settings` (jsonb, one row per org, owner edits)
 - `house_separation_ft` (default 20, `heuristic` — your crane/access practice, not code)
-- `backin_min_side_gap_ft` (ADR-0003: side-yard gap needed to back in vs. crane)
+- `backin_min_side_gap_ft` (ADR-0003: side-yard gap needed to back in vs. crane; **default 16 ft** =
+  ~14 ft biggest unit + maneuvering room to thread it in on a trailer; confirm with Gavin, 18 ft = comfortable)
 - `default_model_id` (which catalog model anchors the map color)
 - `prospect_rule` (what lands on the knock list — green only vs green+yellow)
 - `fastcolor_margin` (the zoomed-out open-space first-pass strictness — kept as a cheap knob)

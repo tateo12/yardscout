@@ -201,7 +201,7 @@ export function fitModel({ zone, constraints, house, model, overlay, step = 0.6 
   }
   if (!best) return { fits: false, clearanceFt: null, method: null };
   // method: side gap to the nearest SIDE lot line at the chosen placement
-  const method = sideGapFt(best, constraints, w) >= (overlay?.backinMinSideGapFt ?? 12) ? "back-in" : "crane";
+  const method = sideGapFt(best, constraints, w) >= (overlay?.backinMinSideGapFt ?? 16) ? "back-in" : "crane";
   return { fits: true, clearanceFt: ft(best.clearM), method, placement: best };
 }
 
