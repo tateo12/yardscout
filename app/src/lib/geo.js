@@ -1,7 +1,7 @@
 // Live geodata for the ADU fit engine: parcels, existing-house footprints, street direction.
 // All three layers are free UGRC ArcGIS services on the same org (open CORS). Works in browser + node (global fetch).
 import { area as turfArea, convex as turfConvex, booleanPointInPolygon, centroid as turfCentroid, nearestPointOnLine, point, polygon as turfPolygon, lineString } from "@turf/turf";
-import { ringToLocal } from "./fit.js";
+import { makeFrame, ringToLocal, buildZone, fitModel, fitScore, scoreToColor } from "./fit.js";
 
 const SQFT_PER_M2 = 10.7639104;
 
@@ -73,6 +73,33 @@ export function pickHouse(parcel, buildings) {
   }
   inside.sort((a, b) => b.area - a.area);
   return { house: inside[0]?.f || null, others: inside.slice(1).map((x) => x.f) };
+}
+
+// One call for a tapped parcel: fetch its footprints + roads, detect house/street, build the zone, and test
+// every model. Returns a UI-ready result. Fails closed to needs-check when we can't apply the rules.
+export async function computeParcelFit(parcel, { models, profile, overlay }) {
+  const bbox = parcelBbox(parcel);
+  const frame = makeFrame(turfCentroid(parcel).geometry.coordinates);
+  const [buildings, roads] = await Promise.all([fetchBuildings(bbox), fetchRoads(bbox)]);
+
+  const { house } = pickHouse(parcel, buildings);
+  const { frontDir, road } = frontDirection(parcel, roads, frame);
+  const { convex, ring, lotSqft } = prepParcel(parcel, frame);
+
+  const base = { lotSqft, road };
+  if (!house) return { status: "needs-check", reason: "no_house_found", ...base };
+  if (!frontDir) return { status: "needs-check", reason: "no_street_found", ...base };
+  if (!convex) return { status: "needs-check", reason: "nonconvex_parcel", ...base };
+
+  const houseLocal = { ring: ringToLocal(house.geometry.coordinates[0], frame) };
+  const z = buildZone({ parcelLocal: ring, lotSqft, house: houseLocal, frontDir, profile });
+  if (!z.ok) return { status: "needs-check", reason: z.reason, ...base };
+
+  const results = models.map((m) => ({ model: m, ...fitModel({ zone: z.zone, constraints: z.constraints, house: houseLocal, model: m, overlay }) }));
+  const fits = results.filter((r) => r.fits).sort((a, b) => b.clearanceFt - a.clearanceFt);
+  const best = fits[0] || null;
+  const color = best ? scoreToColor(fitScore(best.clearanceFt, best.model), { fits: true }) : "#dd5145";
+  return { status: fits.length ? "fits" : "no-fit", fits, results, best, color, ...base };
 }
 
 // Street direction as a LOCAL-meters unit vector (house -> street), from the parcel centroid toward the

@@ -56,6 +56,13 @@
 .outcomes { display: flex; flex-wrap: wrap; gap: 6px; }
 .obtn { border: 1px solid var(--line); background: #fff; border-radius: 9px; padding: 8px 11px; font-size: 12px; font-weight: 600; cursor: pointer; color: #2b3140; font-family: inherit; }
 .obtn:active { transform: scale(.97); }
+.fitrow { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 7px 10px; border-radius: 8px; margin-bottom: 5px; background: #f4f6f8; color: #2b3140; }
+.fitrow b { font-weight: 700; }
+.fitrow .dot { width: 8px; height: 8px; border-radius: 50%; background: #1fa36b; flex: none; }
+.fitrow.ok { background: #eaf7f0; }
+.fitrow.no { background: #fdecea; color: #a2352b; }
+.fitrow.warn { background: #fff5e6; color: #8a5a00; }
+.fitrow.muted { color: var(--muted); background: #f4f6f8; }
 .custfields { display: flex; flex-direction: column; gap: 8px; margin-top: 13px; }
 .corrected { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--graphite); color: #fff; font-size: 9px; letter-spacing: .6px; vertical-align: middle; }
 .flagrow { display: flex; gap: 6px; }

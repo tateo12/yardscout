@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
+import { computeParcelFit } from "./lib/geo";
+import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL } from "./lib/adu";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
@@ -158,6 +160,8 @@ export default function App({ profile, signOut } = {}) {
   const [expanded, setExpanded] = useState(() => new Set());
   const [arReady, setArReady] = useState(false);
   const [show3D, setShow3D] = useState(null);
+  const [aduFit, setAduFit] = useState(null);
+  const [aduLoading, setAduLoading] = useState(false);
   const [settings, setSettings] = useState(() => {
     try { return { ...DEFAULT_SETTINGS, ...(JSON.parse(localStorage.getItem(SET_KEY)) || {}) }; } catch { return DEFAULT_SETTINGS; }
   });
@@ -438,6 +442,19 @@ export default function App({ profile, signOut } = {}) {
     baseLayerRef.current = L.tileLayer(TILES[settings.mapStyle] || TILES.satellite, { maxZoom: 20 }).addTo(map);
   }, [settings.mapStyle]);
 
+  // on tap, run the ADU fit pipeline for the selected parcel (fetch footprints/roads -> which models fit)
+  useEffect(() => {
+    if (selected == null) { setAduFit(null); setAduLoading(false); return; }
+    const feat = idToLayer.current[selected]?.feature;
+    if (!feat?.geometry) { setAduFit(null); return; }
+    let alive = true; setAduFit(null); setAduLoading(true);
+    computeParcelFit(feat, { models: ADU_MODELS, profile: KEARNS_PROFILE, overlay: BUSINESS_OVERLAY })
+      .then((r) => { if (alive) setAduFit(r); })
+      .catch((e) => { if (alive) setAduFit({ status: "error", reason: String(e?.message || e) }); })
+      .finally(() => { if (alive) setAduLoading(false); });
+    return () => { alive = false; };
+  }, [selected]);
+
   const flyTo = (center, zoom = 18) => mapRef.current?.flyTo(center, zoom, { duration: 0.6 });
 
   const record = (key, outcome, props, center) => {
@@ -592,6 +609,19 @@ export default function App({ profile, signOut } = {}) {
                 <div><b>{(sel.BLDG_SQFT || 0).toLocaleString()}</b><span>house sqft</span></div>
                 <div><b>{Math.round((sel.PARCEL_ACRES || 0) * SQFT_PER_ACRE - (sel.BLDG_SQFT || 0)).toLocaleString()}</b><span>open sqft</span></div>
               </div>
+              <div className="dlabel">Which units fit</div>
+              {aduLoading && <div className="fitrow muted">Checking the yard…</div>}
+              {!aduLoading && aduFit?.status === "fits" && aduFit.fits.map((f) => (
+                <div className="fitrow ok" key={f.model.id}>
+                  <span className="dot" />
+                  <b>{f.model.name}</b> · {Math.round(f.clearanceFt)} ft to spare · {f.method}
+                </div>
+              ))}
+              {!aduLoading && aduFit?.status === "no-fit" && <div className="fitrow no">No unit fits this yard after setbacks.</div>}
+              {!aduLoading && aduFit?.status === "needs-check" && (
+                <div className="fitrow warn">Needs a look — {NEEDS_CHECK_LABEL[aduFit.reason] || aduFit.reason}.</div>
+              )}
+              {!aduLoading && aduFit?.status === "error" && <div className="fitrow warn">Couldn’t check this lot right now.</div>}
               <div className="disclaim">Estimate from county data — verify on site before committing.</div>
               <button className="lot3d" onClick={() => {
                 const lyr = idToLayer.current[sel._key]; if (!lyr) return;
