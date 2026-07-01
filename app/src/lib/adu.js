@@ -3,7 +3,9 @@
 
 export const ADU_MODELS = [
   { id: "lafortune-40", name: "40′ × 13′4″", widthFt: 13.333, lengthFt: 40, heightFt: 13.5, beds: 1, baths: 1,
-    glb: "single", usdz: "single", floorPlan: "floorplans/lafortune-40.pdf" },
+    glb: "lafortune-40", usdz: "single", floorPlan: "floorplans/lafortune-40.pdf" },
+  // NOTE: glb is correctly sized (40x13'4). usdz (iOS AR) is still the generic 14x66 — needs a proper USD
+  // regen (best from a real authored model). Android AR + model-viewer + the 3D lot view are correct.
 ];
 
 // Salt Lake County / Kearns profile (sourced from county code — verify; SB284 may change it).
