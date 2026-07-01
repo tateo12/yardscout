@@ -78,12 +78,13 @@ function AuthScreen({ kicked }) {
     e.preventDefault();
     setBusy(true); setMsg("");
     try {
+      const redirectTo = window.location.href.split(/[?#]/)[0];   // come back to THIS deployed page (must be allow-listed in Supabase)
       if (mode === "signup") {
-        const { data, error } = await supabase.auth.signUp({ email, password: pw });
+        const { data, error } = await supabase.auth.signUp({ email, password: pw, options: { emailRedirectTo: redirectTo } });
         if (error) throw error;
         if (!data.session) setMsg("Check your email to confirm your account, then come back and log in.");
       } else if (mode === "reset") {
-        const { error } = await supabase.auth.resetPasswordForEmail(email);
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
         if (error) throw error;
         setMsg("Password reset link sent to your email.");
       } else {
