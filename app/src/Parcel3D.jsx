@@ -14,7 +14,7 @@ function esriExport(bbox, size) {
 }
 
 // Full-screen per-parcel 3D scene: the trailer at real scale on that lot's satellite ground.
-export default function Parcel3D({ center, groundMeters, ring, modelUrl, label, onClose }) {
+export default function Parcel3D({ center, groundMeters, ring, modelUrl, dims, label, onClose }) {
   const mountRef = useRef(null);
   const modelRef = useRef(null);
   const canvasRef = useRef(null);
@@ -95,6 +95,18 @@ export default function Parcel3D({ center, groundMeters, ring, modelUrl, label, 
         const gltf = await new GLTFLoader().loadAsync(modelUrl);
         if (cancelled) return;
         gltf.scene.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        // force the model to the catalog's real footprint (the GLB may be authored at a different size)
+        if (dims) {
+          const box = new THREE.Box3().setFromObject(gltf.scene);
+          const size = new THREE.Vector3(); box.getSize(size);
+          const M = 0.3048;
+          const sx = size.x ? (dims.widthFt * M) / size.x : 1;
+          const sz = size.z ? (dims.lengthFt * M) / size.z : 1;
+          const sy = dims.heightFt && size.y ? (dims.heightFt * M) / size.y : sx;
+          gltf.scene.scale.set(sx, sy, sz);
+        }
+        const bb = new THREE.Box3().setFromObject(gltf.scene);
+        gltf.scene.position.y -= bb.min.y;        // seat the bottom on the ground
         gltf.scene.position.z = groundMeters * 0.18;
         scene.add(gltf.scene);
         model = gltf.scene;
@@ -197,7 +209,7 @@ export default function Parcel3D({ center, groundMeters, ring, modelUrl, label, 
       };
     })();
     return () => { cancelled = true; cleanup(); };
-  }, [center, groundMeters, modelUrl, ring]);
+  }, [center, groundMeters, modelUrl, ring, dims]);
 
   return (
     <div className="p3d">
