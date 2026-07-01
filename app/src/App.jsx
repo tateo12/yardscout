@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
 import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads } from "./lib/geo";
-import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS } from "./lib/adu";
+import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS, FIELD_CHECKS } from "./lib/adu";
 import { sharePdf } from "./lib/share";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -753,6 +753,12 @@ export default function App({ profile, signOut } = {}) {
                 <div className="fitrow warn">Needs a look — {NEEDS_CHECK_LABEL[aduFit.reason] || aduFit.reason}.</div>
               )}
               {!aduLoading && aduFit?.status === "error" && <div className="fitrow warn">Couldn’t check this lot right now.</div>}
+              {!aduLoading && aduFit?.status === "fits" && (
+                <>
+                  <div className="dlabel">Confirm on site</div>
+                  <ul className="checks">{FIELD_CHECKS.map((c) => <li key={c}>{c}</li>)}</ul>
+                </>
+              )}
               <div className="disclaim">Estimate from county data — verify on site before committing.</div>
               <button className="lot3d" onClick={() => {
                 const lyr = idToLayer.current[sel._key]; if (!lyr) return;

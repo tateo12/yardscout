@@ -91,6 +91,10 @@
 .fpv-fallback a { color: #4fd39a; }
 /* share button on the 3D lot view */
 .p3d-share { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); border: 0; background: #1fa36b; color: #fff; font-weight: 700; font-size: 13px; padding: 10px 18px; border-radius: 999px; cursor: pointer; box-shadow: 0 3px 10px rgba(0,0,0,.35); }
+.checks { list-style: none; margin: 0; padding: 0; }
+.checks li { position: relative; padding: 5px 0 5px 24px; font-size: 13px; color: #2b3140; border-bottom: 1px solid var(--line); }
+.checks li:last-child { border-bottom: 0; }
+.checks li::before { content: "▢"; position: absolute; left: 4px; color: var(--muted); font-size: 14px; }
 .custfields { display: flex; flex-direction: column; gap: 8px; margin-top: 13px; }
 .corrected { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--graphite); color: #fff; font-size: 9px; letter-spacing: .6px; vertical-align: middle; }
 .flagrow { display: flex; gap: 6px; }

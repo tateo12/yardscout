@@ -37,6 +37,14 @@ export const RULE_OPTIONS = {
   backinMinSideGapFt: [12, 14, 16, 18, 20],
 };
 
+// Things the map/data can't confirm — the rep verifies these on site before committing.
+export const FIELD_CHECKS = [
+  "Utility easements on the lot",
+  "Room for 1 ADU parking space",
+  "Owner lives on-site (owner-occupancy)",
+  "Building permit",
+];
+
 export const NEEDS_CHECK_LABEL = {
   no_house_found: "couldn't find the house here",
   no_street_found: "couldn't find the street",
