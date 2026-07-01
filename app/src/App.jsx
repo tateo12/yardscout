@@ -46,10 +46,10 @@ const loadOwners = () => {
   } catch { return new Map(); }
 };
 // equity-likelihood tiers: shade the fitting lots by lead quality (hot = long-held/deep equity). Estimate, not a $ amount.
-const EQ = {  // "Ember" scheme: temperature ramp so the tier reads right to anyone (fire -> gold -> slate)
-  hot:  { color: "#fb5607", label: "Hot lead" },        // fire orange — long-held, deep equity; pops hardest
-  warm: { color: "#f7a416", label: "Warm lead" },       // gold — mid tenure/unknown
-  cool: { color: "#4f7aa0", label: "Lower priority" },  // muted steel blue — recent buyer, recedes
+const EQ = {  // "Ember" scheme, softened: same hues (fire/gold/blue) desaturated ~25% to sit with the graphite UI, not read as loud primaries
+  hot:  { color: "#dc5f26", label: "Hot lead" },        // muted fire orange — long-held, deep equity; still pops
+  warm: { color: "#d89c34", label: "Warm lead" },       // muted amber — mid tenure/unknown
+  cool: { color: "#5a7c99", label: "Lower priority" },  // muted steel blue — recent buyer, recedes
 };
 // read an owner record only if still within TTL; purge it on read otherwise (enforces freshness everywhere, not just at load)
 const freshOwner = (cache, key) => {
