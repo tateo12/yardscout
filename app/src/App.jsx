@@ -19,11 +19,10 @@ const MIN_ZOOM = 15;       // below this a viewport holds more parcels than the 
 const FIT_ZOOM = 17;       // at/above this (block level) the map switches to the exact geometry-driven fit color
 const PAGE = 2000;         // ArcGIS per-request cap; we paginate to cover the whole viewport
 const MAX_PAGES = 4;       // up to 8000 parcels per view before we ask the user to zoom in
-const RENTAL_COLOR = "#64748b";
 const SET_KEY = "yardscout.settings.v1";
 const ftIn = (f) => { const w = Math.floor(f); const i = Math.round((f - w) * 12); return i ? `${w}′${i}″` : `${w}′`; };
 const DEFAULT_SETTINGS = {
-  unitW: 14, unitL: 66, unitH: 13.5, greenMargin: 1.6, highlightRentals: true, mapStyle: "satellite", home: null,
+  unitW: 14, unitL: 66, unitH: 13.5, greenMargin: 1.6, mapStyle: "satellite", home: null,
   // ADU placement rules (single-owner, local for now; shared DB comes with the per-rep phase)
   aduCity: "slco-kearns", minLotSqft: 7000, sideFt: 5, rearFt: 10, frontBehindFacadeFt: 10,
   houseSeparationFt: 20, backinMinSideGapFt: 16,
@@ -76,9 +75,6 @@ const TILES = {
   satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
   streets: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
 };
-// Best free signal: a parcel NOT claiming Utah's primary-residence exemption (second home / short-term
-// rental / vacant). True owner-address rental detection needs the assessor's owner data (backend phase).
-const isRental = (p) => p.PRIMARY_RES === "N";
 
 const UA = typeof navigator !== "undefined" ? navigator.userAgent : "";
 const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (typeof navigator !== "undefined" && navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -129,20 +125,18 @@ function scoreOf(props, s) {
   return "green";
 }
 
-// parcel color = scoring verdict (or rental). Knocks/customers never recolor the parcel — only the flag.
+// parcel color = equity-lead tier. Knocks/customers never recolor the parcel — only the flag.
 const styleFor = (feat, s) => {
   const p = feat.properties;
-  if (s.highlightRentals && isRental(p))
-    return { color: RENTAL_COLOR, weight: 1.3, fillColor: RENTAL_COLOR, fillOpacity: 0.5 };
   // Only the lots that WORK are highlighted; everything else is plain satellite (still tappable).
-  // A judged lot uses _fitStatus; an unjudged one falls back to the fast open-space score (green = promising).
   const winner = p._fitStatus ? p._fitStatus === "fits" : p._tier === "green";
   if (!winner) return HIDDEN_STYLE;
-  // Among lots that FIT, shade by equity-lead tier (hand-picked colors used as-is) when we have owner data;
-  // otherwise fall back to the auto fit hue, which needs darkening to read from a broad view.
-  const c = p._ownerTier ? EQ[p._ownerTier].color : darken(p._fitColor || "#16b866", 0.66);
+  // The map only ever speaks Ember: shade by equity-lead tier once we have owner data; a fitting lot that isn't
+  // rated yet (data still loading / missing) gets a neutral graphite gray — never the old green/amber fit scale.
+  const c = p._ownerTier ? EQ[p._ownerTier].color : PENDING_COLOR;
   return { color: c, weight: 2, opacity: 1, fillColor: c, fillOpacity: 0.82 };  // border matches the inside
 };
+const PENDING_COLOR = "#6b7076";  // fits, not yet rated (neutral, on-brand with the graphite UI)
 // darken a #rrggbb toward black by factor f (fill is a darker shade of the border color)
 const darken = (hex, f = 0.55) => {
   const n = parseInt(hex.slice(1), 16);
@@ -847,7 +841,6 @@ export default function App({ profile, signOut } = {}) {
             <span><i style={{ background: EQ.hot.color }} />Hot lead</span>
             <span><i style={{ background: EQ.warm.color }} />Warm</span>
             <span><i style={{ background: EQ.cool.color }} />Lower</span>
-            {settings.highlightRentals && <span><i style={{ background: RENTAL_COLOR }} />Rental</span>}
           </div>
           {sel && (
             <div className="detail">
@@ -1148,13 +1141,7 @@ export default function App({ profile, signOut } = {}) {
                 <button className={settings.mapStyle === "satellite" ? "on" : ""} onClick={() => setSetting("mapStyle", "satellite")}>Satellite</button>
                 <button className={settings.mapStyle === "streets" ? "on" : ""} onClick={() => setSetting("mapStyle", "streets")}>Streets</button>
               </div>
-              <label className="toggle">
-                <span className="tlabel"><b>Highlight rentals</b><small>Shade non-primary homes (second homes, short-term rentals, vacant) so the crew can skip them.</small></span>
-                <input type="checkbox" checked={settings.highlightRentals} onChange={(e) => setSetting("highlightRentals", e.target.checked)} />
-                <span className="sw" />
-              </label>
               <button className="ghostbtn full" onClick={setHome}>Set current map view as “home”</button>
-              <p className="snote">Heads up: a long-term rental with a tenant looks the same as owner-occupied in the free county data, so the rental shading only catches non-primary properties for now. Full absentee-owner detection comes with the backend.</p>
 
               <div className="phd">Data</div>
               <div className="setbtns">
