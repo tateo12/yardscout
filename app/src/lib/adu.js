@@ -55,7 +55,7 @@ export const RULE_OPTIONS = {
 // ---- Per-jurisdiction rule registry (auto-applied by the parcel's city/county) ----
 // Bump when any profile below changes so the fit cache re-judges. Rules are VERIFIED per city, never guessed;
 // a city not listed here falls back to its county baseline and is flagged "unverified" in the UI.
-export const JURISDICTIONS_VERSION = "utah-slco-2026-07-02d";
+export const JURISDICTIONS_VERSION = "utah-slco-2026-07-02e";
 
 // Salt Lake County ordinance = the baseline for all unincorporated SLCo (Kearns + the metro townships).
 export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE };
@@ -87,6 +87,10 @@ const CITY_RULES = {
   "midvale":          P("Midvale",          { minLotSqft: 6001,  sideFt: 2,  rearFt: 2,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),
   "cottonwood heights": P("Cottonwood Heights", { minLotSqft: 0, sideFt: 3,  rearFt: 3,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),   // conditional (R-1/RR-1/F-1)
   "holladay":         P("Holladay",         { minLotSqft: 10000, sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),
+  "sandy":            P("Sandy",            { detachedAllowed: false }),   // detached banned today (internal-only); SB284 forces detached on >=11,000 sqft lots eff. Oct 1 2026
+  // NOTE (SB284, 2026): eff. Oct 1 2026, cities >=5,000 pop must permit detached ADUs on single-family lots >=11,000 sqft
+  // (parking capped 1/2). Revisit the detachedAllowed:false cities (Sandy, West Valley, Taylorsville, Orem, Highland,
+  // Saratoga Springs) after that date — several will flip to allowed. Kept as current bans until then.
   // ---- Utah County ----
   "lehi":             P("Lehi",             { minLotSqft: 14520,  sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1300 }),
   "eagle mountain":   P("Eagle Mountain",   { minLotSqft: 8000,   sideFt: 10, rearFt: 25, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1200 }),  // setbacks zone-dependent (representative)
