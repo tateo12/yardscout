@@ -50,7 +50,7 @@ const loadFits = () => {
 };
 // owner/equity sidecar cache: parcelId -> OwnerRecord (from owner.toOwnerRecord). Kept separate from the fit cache
 // so live county data never entangles with the geometry judgments. Short TTL so field reps don't see stale ownership.
-const OWNER_KEY = "yardscout.owners.v1";
+const OWNER_KEY = "yardscout.owners.v2";   // bump to drop stale records (recompute tenure/etc. with current code)
 const OWNER_TTL = 7 * 864e5;   // 7 days
 const loadOwners = () => {
   try {
@@ -72,7 +72,9 @@ const freshOwner = (cache, key) => {
   if (Date.now() - (r.fetchedAt || 0) > OWNER_TTL) { cache.delete(key); return null; }
   return r;
 };
-const ownerDisplay = (s) => String(s || "").split(";")[0].replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim()
+const ownerDisplay = (s) => String(s || "").split(";")[0]
+  .replace(/\s+\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, "")   // drop trailing trust/recording dates ("... FAMILY TRUST 10/02/2015")
+  .replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim()
   .toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase());
 const fmtAsOf = (ts) => { try { return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); } catch { return "recently"; } };
 
@@ -910,7 +912,7 @@ export default function App({ profile, signOut } = {}) {
                   </div>
                   {selOwner.ownerName && <div className="ownname">{ownerDisplay(selOwner.ownerName)}</div>}
                   <div className="ownmeta">
-                    <span>{selOwner.tenureYrs != null ? `Owned ${selOwner.tenureYrs} yr${selOwner.tenureYrs === 1 ? "" : "s"}` : "Move-in date unknown"}</span>
+                    <span>{selOwner.tenureYrs == null ? "Move-in date unknown" : selOwner.tenureYrs === 0 ? "Owned under a year" : `Owned ${selOwner.tenureYrs} yr${selOwner.tenureYrs === 1 ? "" : "s"}`}</span>
                     {selOwner.marketValue ? <span>${Math.round(selOwner.marketValue).toLocaleString()}</span> : null}
                   </div>
                   <div className="ownpitch">{selOwner.pitch}</div>
