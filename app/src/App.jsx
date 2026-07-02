@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
 import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership } from "./lib/geo";
-import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS } from "./lib/adu";
+import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS, resolveJurisdiction, JURISDICTIONS_VERSION } from "./lib/adu";
 import { toOwnerRecord } from "./lib/owner";
 import { sharePdf } from "./lib/share";
 import L from "leaflet";
@@ -469,11 +469,12 @@ export default function App({ profile, signOut } = {}) {
     try { [buildings, roads] = await Promise.all([fetchBuildings(bbox), fetchRoads(bbox)]); }
     catch { return; }
     if (token !== fitToken.current || !layerRef.current) return;         // a newer move superseded this
-    const opts = { models: ADU_MODELS, profile: aduProfileRef.current, overlay: aduOverlayRef.current };
     uncached.forEach((l) => {
       const p = l.feature.properties, key = p._key;
       if (fitCacheRef.current.has(key)) return;
-      const r = fitParcelWith(l.feature, buildings, roads, opts);
+      // judge each lot by ITS OWN city's rules (auto-detected from the parcel); fall back to the county baseline
+      const { profile } = resolveJurisdiction({ city: p.PARCEL_CITY, county: p.COUNTY_NAME, fallback: aduProfileRef.current });
+      const r = fitParcelWith(l.feature, buildings, roads, { models: ADU_MODELS, profile, overlay: aduOverlayRef.current });
       const entry = { status: r.status, color: r.status === "fits" ? r.color : null };
       fitCacheRef.current.set(key, entry);
       p._fitStatus = entry.status; p._fitColor = entry.color;
@@ -675,7 +676,7 @@ export default function App({ profile, signOut } = {}) {
   // keep the fit-engine refs current and re-color the map when the rules change
   useEffect(() => {
     aduProfileRef.current = aduProfile; aduOverlayRef.current = aduOverlay;
-    const sig = JSON.stringify([aduProfile, aduOverlay, ADU_MODELS.map((m) => m.id)]);
+    const sig = JSON.stringify([aduProfile, aduOverlay, ADU_MODELS.map((m) => m.id), JURISDICTIONS_VERSION]);
     if (sig !== sigRef.current) {   // rules changed -> drop stale judgments and re-judge against the new rules
       sigRef.current = sig; fitCacheRef.current = new Map(); persistFits();
       layerRef.current?.eachLayer((l) => { const p = l.feature.properties; delete p._fitStatus; delete p._fitColor; l.setStyle(styleFor(l.feature, settingsRef.current)); });
@@ -689,7 +690,8 @@ export default function App({ profile, signOut } = {}) {
     const feat = idToLayer.current[selected]?.feature;
     if (!feat?.geometry) { setAduFit(null); return; }
     let alive = true; setAduFit(null); setAduLoading(true);
-    computeParcelFit(feat, { models: ADU_MODELS, profile: aduProfile, overlay: aduOverlay })
+    const { profile } = resolveJurisdiction({ city: feat.properties.PARCEL_CITY, county: feat.properties.COUNTY_NAME, fallback: aduProfile });
+    computeParcelFit(feat, { models: ADU_MODELS, profile, overlay: aduOverlay })
       .then((r) => { if (alive) setAduFit({ ...r, _key: selected }); })
       .catch((e) => { if (alive) setAduFit({ status: "error", reason: String(e?.message || e), _key: selected }); })
       .finally(() => { if (alive) setAduLoading(false); });
@@ -831,6 +833,7 @@ export default function App({ profile, signOut } = {}) {
   const selKnock = selected != null ? knocks[selected] : null;
   const fit = aduFit && aduFit._key === selected ? aduFit : null;   // only trust the fit result if it's for the CURRENT parcel
   const ruleCounty = sel?.COUNTY_NAME || (CITY_PROFILES.find((c) => c.key === settings.aduCity)?.name || "this county");
+  const selJuris = sel ? resolveJurisdiction({ city: sel.PARCEL_CITY, county: sel.COUNTY_NAME, fallback: aduProfile }) : null;   // rules for THIS parcel's city
   const selOwner = useMemo(() => {
     void ownerVer;   // re-read the ref when owner data lands (batch enrich or on-demand fetch)
     return selected != null ? freshOwner(ownerCacheRef.current, String(selected)) : null;
@@ -884,19 +887,21 @@ export default function App({ profile, signOut } = {}) {
               <button className="x" onClick={() => setSelected(null)} aria-label="Close">×</button>
               <div className="daddr">{sel.PARCEL_ADD || "(no address)"}</div>
               <div className="dcity">{titleCase(sel.PARCEL_CITY) || "Unincorporated"}{sel.COUNTY_NAME ? ` · ${sel.COUNTY_NAME}` : ""}</div>
-              <button className="ruleshd" onClick={() => setShowRules((v) => !v)} aria-expanded={showRules}>ADU rules · {ruleCounty} <span>{showRules ? "▾" : "▸"}</span></button>
-              {showRules && (
+              <button className="ruleshd" onClick={() => setShowRules((v) => !v)} aria-expanded={showRules}>ADU rules · {selJuris?.verified ? titleCase(sel.PARCEL_CITY) : ruleCounty}{selJuris && !selJuris.verified ? " (baseline)" : ""} <span>{showRules ? "▾" : "▸"}</span></button>
+              {showRules && selJuris && (
                 <div className="rules">
-                  <div><span>Min lot</span><b>{aduProfile.minLotSqft.toLocaleString()} sq ft</b></div>
-                  <div><span>Side setback</span><b>{aduProfile.sideFt} ft</b></div>
-                  <div><span>Rear setback</span><b>{aduProfile.rearFt} ft</b></div>
-                  <div><span>Behind house front</span><b>{aduProfile.frontBehindFacadeFt} ft</b></div>
-                  <div><span>Max ADU size</span><b>{sizeCapLabel(aduProfile)}</b></div>
+                  <div><span>Min lot</span><b>{selJuris.profile.minLotSqft.toLocaleString()} sq ft</b></div>
+                  <div><span>Side setback</span><b>{selJuris.profile.sideFt} ft</b></div>
+                  <div><span>Rear setback</span><b>{selJuris.profile.rearFt} ft</b></div>
+                  <div><span>Behind house front</span><b>{selJuris.profile.frontBehindFacadeFt} ft</b></div>
+                  <div><span>Max ADU size</span><b>{sizeCapLabel(selJuris.profile)}</b></div>
                   <div><span>Off the house</span><b>{aduOverlay.houseSeparationFt} ft</b></div>
                   <div><span>Owner-occupied</span><b>Required</b></div>
-                  <div><span>Max height</span><b>≤ 20  ft</b></div>
+                  <div><span>Max height</span><b>≤ 20 ft</b></div>
                   <div><span>Parking</span><b>1 space</b></div>
-                  <p className="snote">{ruleCounty} baseline{sel?.PARCEL_CITY ? ` — ${titleCase(sel.PARCEL_CITY)} may set its own ADU code; verify` : " — verify locally"}.</p>
+                  <p className="snote">{selJuris.verified
+                    ? `${titleCase(sel.PARCEL_CITY)} ADU code — verify locally before committing.`
+                    : `${ruleCounty} baseline${sel?.PARCEL_CITY ? ` — ${titleCase(sel.PARCEL_CITY)}'s own code isn't loaded yet; verify` : " — verify locally"}.`}</p>
                 </div>
               )}
               <div className="readout">
@@ -928,7 +933,7 @@ export default function App({ profile, signOut } = {}) {
                 </div>
               ))}
               {!aduLoading && fit?.status === "not-eligible" && (
-                <div className="fitrow no">Not eligible — lot is {Math.round(fit.lotSqft).toLocaleString()} sq ft, under the {settings.minLotSqft.toLocaleString()} sq ft minimum.</div>
+                <div className="fitrow no">Not eligible — lot is {Math.round(fit.lotSqft).toLocaleString()} sq ft, under the {(selJuris?.profile.minLotSqft ?? 7000).toLocaleString()} sq ft minimum.</div>
               )}
               {!aduLoading && fit?.status === "no-fit" && <div className="fitrow no">{fit.noFitReason === "over_size_cap" ? "A unit fits the yard, but every model is over this city’s ADU size limit for this home." : "No unit fits this yard after setbacks."}</div>}
               {!aduLoading && fit?.status === "needs-check" && (

@@ -51,6 +51,34 @@ export const RULE_OPTIONS = {
   maxAduSqft: [0, 800, 1000, 1200, 1500],
 };
 
+// ---- Per-jurisdiction rule registry (auto-applied by the parcel's city/county) ----
+// Bump when any profile below changes so the fit cache re-judges. Rules are VERIFIED per city, never guessed;
+// a city not listed here falls back to its county baseline and is flagged "unverified" in the UI.
+export const JURISDICTIONS_VERSION = "slco-2026-07-02";
+
+// Salt Lake County ordinance = the baseline for all unincorporated SLCo (Kearns + the metro townships).
+export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE };
+
+// city name (as it appears in PARCEL_CITY, lowercased) -> { profile, verified }.
+// Seeded with the unincorporated metro townships, which are genuinely governed by the county code (verified).
+// Incorporated cities (Salt Lake City, Murray, West Valley, ...) each set their own code — add them here as verified.
+const UNINCORPORATED_SLCO = ["kearns", "magna", "white city", "copperton", "emigration canyon", "kearns metro township", "magna metro township"];
+export const JURISDICTIONS = Object.fromEntries(
+  UNINCORPORATED_SLCO.map((c) => [c, { profile: KEARNS_PROFILE, verified: true }])
+);
+
+const normCity = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
+
+// Resolve the rule profile for a parcel from its city/county.
+// - Listed city (registry) -> its verified profile.
+// - Otherwise (verified:false): the owner-tuned baseline `fallback` (Settings, which defaults to the county
+//   ordinance) if provided, else the county baseline, else the SLCo default. Never invents city-specific rules.
+export function resolveJurisdiction({ city, county, fallback } = {}) {
+  const hit = JURISDICTIONS[normCity(city)];
+  if (hit) return { name: city, verified: true, profile: hit.profile };
+  return { name: city || county || "this area", verified: false, profile: fallback || COUNTY_BASELINES[county] || KEARNS_PROFILE };
+}
+
 // Things the map/data can't confirm — the rep verifies these on site before committing.
 export const FIELD_CHECKS = [
   "Utility easements on the lot",
