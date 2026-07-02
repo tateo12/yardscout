@@ -17,6 +17,7 @@ export const ADU_MODELS = [
 // Salt Lake County / Kearns profile (sourced from county code — verify; SB284 may change it).
 export const KEARNS_PROFILE = {
   name: "Salt Lake County — Kearns",
+  detachedAllowed: true, // some cities BAN detached ADUs (internal/attached only) -> no product fits; false = hard no
   minLotSqft: 7000,      // sourced
   sideFt: 5,             // provisional (per-zone)
   rearFt: 10,            // sourced

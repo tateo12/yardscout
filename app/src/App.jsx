@@ -942,7 +942,9 @@ export default function App({ profile, signOut } = {}) {
                 </div>
               ))}
               {!aduLoading && fit?.status === "not-eligible" && (
-                <div className="fitrow no">Not eligible — lot is {Math.round(fit.lotSqft).toLocaleString()} sq ft, under the {(selJuris?.profile.minLotSqft ?? 7000).toLocaleString()} sq ft minimum.</div>
+                <div className="fitrow no">{fit.reason === "detached_not_allowed"
+                  ? `${titleCase(sel.PARCEL_CITY) || ruleCounty} doesn't allow detached ADUs — a backyard unit can't be placed here.`
+                  : `Not eligible — lot is ${Math.round(fit.lotSqft).toLocaleString()} sq ft, under the ${(selJuris?.profile.minLotSqft ?? 7000).toLocaleString()} sq ft minimum.`}</div>
               )}
               {!aduLoading && fit?.status === "no-fit" && <div className="fitrow no">{fit.noFitReason === "over_size_cap" ? "A unit fits the yard, but every model is over this city’s ADU size limit for this home." : "No unit fits this yard after setbacks."}</div>}
               {!aduLoading && fit?.status === "needs-check" && (

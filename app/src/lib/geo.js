@@ -121,7 +121,9 @@ export function fitParcelWith(parcel, buildings, roads, { models, profile, overl
   const frame = makeFrame(turfCentroid(parcel).geometry.coordinates);
   const { convex, ring, lotSqft } = prepParcel(parcel, frame);
   const base = { lotSqft, road: null };
-  // hard eligibility gate FIRST: too-small lot is a flat no, regardless of what's back there.
+  // hard eligibility gates FIRST. If the city bans DETACHED ADUs, no backyard product can go here at all.
+  if (profile.detachedAllowed === false) return { status: "not-eligible", reason: "detached_not_allowed", ...base };
+  // ...and a too-small lot is a flat no, regardless of what's back there.
   if (lotSqft < (profile.minLotSqft ?? 0)) return { status: "not-eligible", reason: "below_min_lot", ...base };
 
   const { house } = pickHouse(parcel, buildings);
