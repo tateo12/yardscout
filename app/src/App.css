@@ -47,6 +47,14 @@
 .detail .x { position: absolute; right: 10px; top: 8px; border: 0; background: transparent; font-size: 22px; line-height: 1; color: #aab; cursor: pointer; }
 .daddr { font-size: 17px; font-weight: 700; letter-spacing: -.3px; margin: 9px 0 1px; }
 .dcity { font-family: var(--mono); font-size: 11px; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); }
+.ruleshd { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 9px 0 2px; margin-top: 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .6px; text-transform: uppercase; color: var(--muted); cursor: pointer; }
+.ruleshd span { color: #9aa4af; }
+.rules { background: var(--snow); border-radius: 10px; padding: 8px 11px; margin-top: 5px; }
+.rules > div { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; padding: 3px 0; border-bottom: 1px solid rgba(0,0,0,.05); }
+.rules > div:last-of-type { border-bottom: 0; }
+.rules span { color: var(--muted); }
+.rules b { font-family: var(--mono); font-weight: 600; color: #2b3140; }
+.rules .snote { margin-top: 7px; }
 .readout { display: flex; gap: 8px; margin: 13px 0 4px; }
 .readout > div { flex: 1; background: var(--snow); border-radius: 10px; padding: 8px 9px; }
 .readout b { font-family: var(--mono); font-size: 15px; font-weight: 600; display: block; letter-spacing: -.5px; }

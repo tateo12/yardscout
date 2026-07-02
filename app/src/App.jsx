@@ -29,6 +29,13 @@ const groupFits = (fits) => Object.values((fits || []).reduce((acc, f) => {
   acc[k].models.push(f.model);
   return acc;
 }, {}));
+const titleCase = (s) => String(s || "").toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
+const sizeCapLabel = (p) => {
+  const parts = [];
+  if (p.maxPctOfPrimary) parts.push(`${p.maxPctOfPrimary}% of home`);
+  if (p.maxAduSqft) parts.push(`${p.maxAduSqft.toLocaleString()} sq ft`);
+  return parts.length ? parts.join(" or ") : "No cap";
+};
 const DEFAULT_SETTINGS = {
   mapStyle: "satellite", home: null,
   // ADU placement rules (single-owner, local for now; shared DB comes with the per-rep phase)
@@ -218,6 +225,7 @@ export default function App({ profile, signOut } = {}) {
   const [aduLoading, setAduLoading] = useState(false);
   const [floorPlan, setFloorPlan] = useState(null);   // catalog model whose floor plan is open
   const [openModel, setOpenModel] = useState(null);   // Trailer tab: which unit is expanded (3D loads only when open)
+  const [showRules, setShowRules] = useState(false);   // detail card: expand the jurisdiction's ADU rules
   const [ownerPartial, setOwnerPartial] = useState(false);  // last owner fetch couldn't reach some lots (county server)
   const [pull, setPull] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -531,7 +539,7 @@ export default function App({ profile, signOut } = {}) {
       geometry: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(","),
       geometryType: "esriGeometryEnvelope", inSR: "4326",
       spatialRel: "esriSpatialRelIntersects",
-      outFields: "PARCEL_ID,PARCEL_ADD,PARCEL_CITY,PARCEL_ACRES,BLDG_SQFT,PRIMARY_RES",
+      outFields: "PARCEL_ID,PARCEL_ADD,PARCEL_CITY,COUNTY_NAME,PARCEL_ACRES,BLDG_SQFT,PRIMARY_RES",
       returnGeometry: "true", outSR: "4326", f: "geojson", resultRecordCount: String(PAGE),
     };
     const token = ++reqToken.current;
@@ -820,6 +828,7 @@ export default function App({ profile, signOut } = {}) {
   const sel = selected != null ? features.find((p) => p._key === selected) : null;
   const selKnock = selected != null ? knocks[selected] : null;
   const fit = aduFit && aduFit._key === selected ? aduFit : null;   // only trust the fit result if it's for the CURRENT parcel
+  const profileCity = CITY_PROFILES.find((c) => c.key === settings.aduCity)?.name || settings.aduCity;
   const selOwner = useMemo(() => {
     void ownerVer;   // re-read the ref when owner data lands (batch enrich or on-demand fetch)
     return selected != null ? freshOwner(ownerCacheRef.current, String(selected)) : null;
@@ -872,7 +881,22 @@ export default function App({ profile, signOut } = {}) {
             <div className="detail">
               <button className="x" onClick={() => setSelected(null)} aria-label="Close">×</button>
               <div className="daddr">{sel.PARCEL_ADD || "(no address)"}</div>
-              <div className="dcity">{sel.PARCEL_CITY}</div>
+              <div className="dcity">{titleCase(sel.PARCEL_CITY) || "Unincorporated"}{sel.COUNTY_NAME ? ` · ${sel.COUNTY_NAME}` : ""}</div>
+              <button className="ruleshd" onClick={() => setShowRules((v) => !v)} aria-expanded={showRules}>ADU rules · {profileCity} <span>{showRules ? "▾" : "▸"}</span></button>
+              {showRules && (
+                <div className="rules">
+                  <div><span>Min lot</span><b>{aduProfile.minLotSqft.toLocaleString()} sq ft</b></div>
+                  <div><span>Side setback</span><b>{aduProfile.sideFt} ft</b></div>
+                  <div><span>Rear setback</span><b>{aduProfile.rearFt} ft</b></div>
+                  <div><span>Behind house front</span><b>{aduProfile.frontBehindFacadeFt} ft</b></div>
+                  <div><span>Max ADU size</span><b>{sizeCapLabel(aduProfile)}</b></div>
+                  <div><span>Off the house</span><b>{aduOverlay.houseSeparationFt} ft</b></div>
+                  <div><span>Owner-occupied</span><b>Required</b></div>
+                  <div><span>Max height</span><b>≤ 20  ft</b></div>
+                  <div><span>Parking</span><b>1 space</b></div>
+                  <p className="snote">Rules follow the city set in Settings — verify locally.</p>
+                </div>
+              )}
               <div className="readout">
                 <div><b>{sel.PARCEL_ACRES}</b><span>acres</span></div>
                 <div><b>{(sel.BLDG_SQFT || 0).toLocaleString()}</b><span>house sqft</span></div>

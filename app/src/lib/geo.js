@@ -49,7 +49,7 @@ const pad = (b, dLng, dLat) => [b[0] - dLng, b[1] - dLat, b[2] + dLng, b[3] + dL
 export async function fetchParcels(bbox, where = "PROP_CLASS='Residential'") {
   return esriGeojson(LAYERS.parcels, {
     geometry: bboxStr(bbox), where,
-    outFields: "PARCEL_ID,PARCEL_ADD,PARCEL_CITY,PARCEL_ACRES,BLDG_SQFT,PRIMARY_RES",
+    outFields: "PARCEL_ID,PARCEL_ADD,PARCEL_CITY,COUNTY_NAME,PARCEL_ACRES,BLDG_SQFT,PRIMARY_RES",
   });
 }
 export async function fetchBuildings(bbox) {
