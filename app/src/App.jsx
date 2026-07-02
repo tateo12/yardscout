@@ -830,7 +830,7 @@ export default function App({ profile, signOut } = {}) {
   const sel = selected != null ? features.find((p) => p._key === selected) : null;
   const selKnock = selected != null ? knocks[selected] : null;
   const fit = aduFit && aduFit._key === selected ? aduFit : null;   // only trust the fit result if it's for the CURRENT parcel
-  const profileCity = CITY_PROFILES.find((c) => c.key === settings.aduCity)?.name || settings.aduCity;
+  const ruleCounty = sel?.COUNTY_NAME || (CITY_PROFILES.find((c) => c.key === settings.aduCity)?.name || "this county");
   const selOwner = useMemo(() => {
     void ownerVer;   // re-read the ref when owner data lands (batch enrich or on-demand fetch)
     return selected != null ? freshOwner(ownerCacheRef.current, String(selected)) : null;
@@ -884,7 +884,7 @@ export default function App({ profile, signOut } = {}) {
               <button className="x" onClick={() => setSelected(null)} aria-label="Close">×</button>
               <div className="daddr">{sel.PARCEL_ADD || "(no address)"}</div>
               <div className="dcity">{titleCase(sel.PARCEL_CITY) || "Unincorporated"}{sel.COUNTY_NAME ? ` · ${sel.COUNTY_NAME}` : ""}</div>
-              <button className="ruleshd" onClick={() => setShowRules((v) => !v)} aria-expanded={showRules}>ADU rules · {profileCity} <span>{showRules ? "▾" : "▸"}</span></button>
+              <button className="ruleshd" onClick={() => setShowRules((v) => !v)} aria-expanded={showRules}>ADU rules · {ruleCounty} <span>{showRules ? "▾" : "▸"}</span></button>
               {showRules && (
                 <div className="rules">
                   <div><span>Min lot</span><b>{aduProfile.minLotSqft.toLocaleString()} sq ft</b></div>
@@ -896,7 +896,7 @@ export default function App({ profile, signOut } = {}) {
                   <div><span>Owner-occupied</span><b>Required</b></div>
                   <div><span>Max height</span><b>≤ 20  ft</b></div>
                   <div><span>Parking</span><b>1 space</b></div>
-                  <p className="snote">Rules follow the city set in Settings — verify locally.</p>
+                  <p className="snote">{ruleCounty} baseline{sel?.PARCEL_CITY ? ` — ${titleCase(sel.PARCEL_CITY)} may set its own ADU code; verify` : " — verify locally"}.</p>
                 </div>
               )}
               <div className="readout">
