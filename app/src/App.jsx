@@ -896,7 +896,7 @@ export default function App({ profile, signOut } = {}) {
               <button className="x" onClick={() => setSelected(null)} aria-label="Close">×</button>
               <div className="daddr">{sel.PARCEL_ADD || "(no address)"}</div>
               <div className="dcity">{titleCase(sel.PARCEL_CITY) || "Unincorporated"}{sel.COUNTY_NAME ? ` · ${sel.COUNTY_NAME}` : ""}</div>
-              <button className="ruleshd" onClick={() => setShowRules((v) => !v)} aria-expanded={showRules}>ADU rules · {selJuris?.verified ? titleCase(sel.PARCEL_CITY) : ruleCounty}{selJuris && !selJuris.verified ? " (baseline)" : ""} <span>{showRules ? "▾" : "▸"}</span></button>
+              <button className="ruleshd" onClick={() => setShowRules((v) => !v)} aria-expanded={showRules}>ADU rules · {selJuris?.verified ? titleCase(sel.PARCEL_CITY) : ruleCounty} <span>{showRules ? "▾" : "▸"}</span></button>
               {showRules && selJuris && (
                 <div className="rules">
                   <div><span>Min lot</span><b>{selJuris.profile.minLotSqft.toLocaleString()} sq ft</b></div>
@@ -909,8 +909,8 @@ export default function App({ profile, signOut } = {}) {
                   <div><span>Max height</span><b>≤ 20 ft</b></div>
                   <div><span>Parking</span><b>1 space</b></div>
                   <p className="snote">{selJuris.verified
-                    ? `${titleCase(sel.PARCEL_CITY)} ADU code — verify locally before committing.`
-                    : `${ruleCounty} baseline${sel?.PARCEL_CITY ? ` — ${titleCase(sel.PARCEL_CITY)}'s own code isn't loaded yet; verify` : " — verify locally"}.`}</p>
+                    ? `${titleCase(sel.PARCEL_CITY)} ADU standards — always verify locally before committing.`
+                    : `${ruleCounty} standards${sel?.PARCEL_CITY ? ` — confirm ${titleCase(sel.PARCEL_CITY)}'s local requirements` : ""} before committing.`}</p>
                 </div>
               )}
               <div className="readout">

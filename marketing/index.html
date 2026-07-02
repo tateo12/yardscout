@@ -140,8 +140,8 @@
     display: flex; flex-wrap: wrap; gap: 10px 22px;
     font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
   }
-  .trust span { display: flex; align-items: center; gap: 9px; min-width: 0; }
-  .trust span::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+  .trust span { display: block; min-width: 0; }
+  .trust span::before { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); margin-right: 9px; vertical-align: middle; }
 
   /* ---------------- scanner (signature element, light map) ---------------- */
   .scanner {
@@ -306,6 +306,9 @@
     .brand { font-size: 1.06rem; }
     .nav-cta .btn-primary { padding: 9px 13px; font-size: 0.85rem; }
   }
+
+  .hero-grid > *, .feature > *, .grid-2 > *, .foot-top > * { min-width: 0; }
+  canvas#map { min-width: 0; }
 
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
