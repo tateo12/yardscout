@@ -55,7 +55,7 @@ export const RULE_OPTIONS = {
 // ---- Per-jurisdiction rule registry (auto-applied by the parcel's city/county) ----
 // Bump when any profile below changes so the fit cache re-judges. Rules are VERIFIED per city, never guessed;
 // a city not listed here falls back to its county baseline and is flagged "unverified" in the UI.
-export const JURISDICTIONS_VERSION = "slco-2026-07-02";
+export const JURISDICTIONS_VERSION = "utah-slco-2026-07-02b";
 
 // Salt Lake County ordinance = the baseline for all unincorporated SLCo (Kearns + the metro townships).
 export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE };
@@ -64,9 +64,35 @@ export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE };
 // Seeded with the unincorporated metro townships, which are genuinely governed by the county code (verified).
 // Incorporated cities (Salt Lake City, Murray, West Valley, ...) each set their own code — add them here as verified.
 const UNINCORPORATED_SLCO = ["kearns", "magna", "white city", "copperton", "emigration canyon", "kearns metro township", "magna metro township"];
-export const JURISDICTIONS = Object.fromEntries(
-  UNINCORPORATED_SLCO.map((c) => [c, { profile: KEARNS_PROFILE, verified: true }])
-);
+
+// Per-city detached-ADU rules from municipal code (researched 2026-07, cited). Spread over the county baseline;
+// override only confirmed fields. detachedAllowed:false = detached units banned (hard no-go). frontBehindFacadeFt 0
+// where a city bars front-yard placement without a numeric offset. Zone-dependent setbacks use a representative
+// residential value. Always shown with a "verify locally" note. Cities not listed fall back to the county baseline.
+const P = (name, o = {}) => ({ ...KEARNS_PROFILE, name, ...o });
+const CITY_RULES = {
+  // ---- Salt Lake County ----
+  "salt lake city":   P("Salt Lake City",   { minLotSqft: 0,      sideFt: 3,  rearFt: 3,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1000 }),
+  "murray":           P("Murray",           { minLotSqft: 10000,  sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 1000 }),
+  "millcreek":        P("Millcreek",        { minLotSqft: 8000,   sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1000 }),
+  "south salt lake":  P("South Salt Lake",  { minLotSqft: 6000,   sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 1000 }),
+  "west jordan":      P("West Jordan",      { minLotSqft: 10000,  sideFt: 6,  rearFt: 6,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),
+  "west valley city": P("West Valley City", { detachedAllowed: false }),   // detached banned (SB284 may force change by Oct 2026)
+  "taylorsville":     P("Taylorsville",     { detachedAllowed: false }),   // detached banned (internal only)
+  // ---- Utah County ----
+  "lehi":             P("Lehi",             { minLotSqft: 14520,  sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1300 }),
+  "eagle mountain":   P("Eagle Mountain",   { minLotSqft: 8000,   sideFt: 10, rearFt: 25, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1200 }),  // setbacks zone-dependent (representative)
+  "lindon":           P("Lindon",           { minLotSqft: 6001,   sideFt: 8,  rearFt: 20, frontBehindFacadeFt: 10, maxPctOfPrimary: 40, maxAduSqft: 1500 }),
+  "vineyard":         P("Vineyard",         { minLotSqft: 12000,  sideFt: 3,  rearFt: 3,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1200 }),
+  "pleasant grove":   P("Pleasant Grove",   { minLotSqft: 0,      frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),   // setbacks zone-dependent -> baseline
+  "alpine":           P("Alpine",           { minLotSqft: 217800, sideFt: 12, rearFt: 12, frontBehindFacadeFt: 30, maxPctOfPrimary: 0, maxAduSqft: 0 }),   // detached only as conditional guest house, 5-acre min
+  "highland":         P("Highland",         { detachedAllowed: false }),   // detached banned (internal/attached only)
+  "saratoga springs": P("Saratoga Springs", { detachedAllowed: false }),   // detached banned (internal only)
+};
+export const JURISDICTIONS = Object.fromEntries([
+  ...UNINCORPORATED_SLCO.map((c) => [c, { profile: KEARNS_PROFILE, verified: true }]),
+  ...Object.entries(CITY_RULES).map(([c, profile]) => [c, { profile, verified: true }]),
+]);
 
 const normCity = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
 
