@@ -9,8 +9,13 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
 
-const PARCELS_URL =
-  "https://services1.arcgis.com/99lidPhWCzftIe9K/arcgis/rest/services/Parcels_SaltLake_LIR/FeatureServer/0/query";
+// Per-county LIR parcel layers (same CORS-open UGRC org, full attributes). Both valleys load by querying each;
+// a viewport in one county returns ~0 from the other, so it's one cheap extra request. Add more counties here.
+const PARCELS_ORG = "https://services1.arcgis.com/99lidPhWCzftIe9K/arcgis/rest/services";
+const PARCEL_LAYERS = [
+  `${PARCELS_ORG}/Parcels_SaltLake_LIR/FeatureServer/0/query`,
+  `${PARCELS_ORG}/Parcels_Utah_LIR/FeatureServer/0/query`,
+];
 
 // unit + scoring (open-space from parcel attributes; access/crane is the footprint pass)
 const SQFT_PER_ACRE = 43560;
@@ -548,20 +553,24 @@ export default function App({ profile, signOut } = {}) {
     const token = ++reqToken.current;
     setLoading(true);
     (async () => {
-      let offset = 0, all = [], more = true, pages = 0;
-      while (more && pages < MAX_PAGES) {
-        const params = new URLSearchParams({ ...base, resultOffset: String(offset) });
-        let fc;
-        try { fc = await fetch(`${PARCELS_URL}?${params}`).then((r) => r.json()); }
-        catch { if (token === reqToken.current) setLoading(false); return; }
-        if (token !== reqToken.current) return; // a newer move superseded this load
-        const batch = fc.features || [];
-        all = all.concat(batch);
-        more = batch.length >= PAGE;   // a full page back means there are probably more (geojson omits exceededTransferLimit)
-        offset += PAGE; pages++;
+      let all = [], capped = false;
+      for (const url of PARCEL_LAYERS) {   // query each county layer; one returns ~0 for a single-county viewport
+        let offset = 0, more = true, pages = 0;
+        while (more && pages < MAX_PAGES) {
+          const params = new URLSearchParams({ ...base, resultOffset: String(offset) });
+          let fc;
+          try { fc = await fetch(`${url}?${params}`).then((r) => r.json()); }
+          catch { break; }   // this county's layer failed -> skip it, keep the others
+          if (token !== reqToken.current) return; // a newer move superseded this load
+          const batch = fc.features || [];
+          all = all.concat(batch);
+          more = batch.length >= PAGE;   // a full page back means there are probably more (geojson omits exceededTransferLimit)
+          offset += PAGE; pages++;
+        }
+        if (more) capped = true;   // hit the page budget in some county -> suggest zooming in
       }
       renderParcels(all);
-      setCapped(more);   // still more beyond our page budget -> suggest zooming in
+      setCapped(capped);
       setLoading(false);
       computeFits();     // block-zoom: color lots by the real geometry fit
       computeOwners();   // then enrich with county owner/equity data and re-shade winners by lead tier
