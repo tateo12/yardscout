@@ -1,5 +1,5 @@
 // Fixture tests for the ADU fit engine. Run: node test/fit.test.mjs
-import { buildZone, fitModel, isConvex, fitScore, scoreToColor } from "../src/lib/fit.js";
+import { buildZone, fitModel, isConvex, fitScore, scoreToColor, aduSizeCap } from "../src/lib/fit.js";
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log(`  ok  ${name}`); } else { fail++; console.log(`FAIL  ${name} ${extra}`); } };
@@ -65,6 +65,14 @@ const house = { ring: [[5, 5], [20, 5], [20, 20], [5, 20]] };  // 15x15m house n
   const s = fitScore(10, M40); // 10 ft clearance on a 13.3 ft model
   ok("color: fitScore in (0,1]", s > 0 && s <= 1, String(s));
   ok("color: high clearance trends emerald", scoreToColor(fitScore(20, M40), { fits: true }) === "#16b866");
+}
+
+// --- 7. per-city ADU size cap ---
+{
+  ok("size cap: uncapped when no rule", aduSizeCap({ maxPctOfPrimary: 0, maxAduSqft: 0 }, 1200) === null);
+  ok("size cap: 50% of a 1200sf home = 600", aduSizeCap({ maxPctOfPrimary: 50 }, 1200) === 600);
+  ok("size cap: tighter of pct vs absolute wins", aduSizeCap({ maxPctOfPrimary: 50, maxAduSqft: 500 }, 1200) === 500);
+  ok("size cap: pct ignored when primary sqft unknown", aduSizeCap({ maxPctOfPrimary: 50 }, 0) === null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

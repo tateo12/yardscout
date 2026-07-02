@@ -21,10 +21,18 @@ const PAGE = 2000;         // ArcGIS per-request cap; we paginate to cover the w
 const MAX_PAGES = 4;       // up to 8000 parcels per view before we ask the user to zoom in
 const SET_KEY = "yardscout.settings.v1";
 const ftIn = (f) => { const w = Math.floor(f); const i = Math.round((f - w) * 12); return i ? `${w}′${i}″` : `${w}′`; };
+// collapse fitting models by footprint -> one entry per distinct size, keeping the roomiest fit + the models at that size
+const groupFits = (fits) => Object.values((fits || []).reduce((acc, f) => {
+  const k = `${f.model.widthFt}x${f.model.lengthFt}`;
+  if (!acc[k]) acc[k] = { key: k, w: f.model.widthFt, l: f.model.lengthFt, clearanceFt: f.clearanceFt, method: f.method, models: [] };
+  else if (f.clearanceFt > acc[k].clearanceFt) { acc[k].clearanceFt = f.clearanceFt; acc[k].method = f.method; }
+  acc[k].models.push(f.model);
+  return acc;
+}, {}));
 const DEFAULT_SETTINGS = {
   mapStyle: "satellite", home: null,
   // ADU placement rules (single-owner, local for now; shared DB comes with the per-rep phase)
-  aduCity: "slco-kearns", minLotSqft: 7000, sideFt: 5, rearFt: 10, frontBehindFacadeFt: 10,
+  aduCity: "slco-kearns", minLotSqft: 7000, sideFt: 5, rearFt: 10, frontBehindFacadeFt: 10, maxPctOfPrimary: 0, maxAduSqft: 0,
   houseSeparationFt: 20, backinMinSideGapFt: 16,
 };
 // persistent per-lot fit cache (survives panning + reloads); keyed by parcel id, scoped to a rules signature
@@ -336,7 +344,7 @@ export default function App({ profile, signOut } = {}) {
   const setSetting = (k, v) => setSettings((s) => ({ ...s, [k]: v }));
   const setCity = (key) => setSettings((s) => {
     const p = CITY_PROFILES.find((c) => c.key === key);
-    return p ? { ...s, aduCity: key, minLotSqft: p.minLotSqft, sideFt: p.sideFt, rearFt: p.rearFt, frontBehindFacadeFt: p.frontBehindFacadeFt } : { ...s, aduCity: key };
+    return p ? { ...s, aduCity: key, minLotSqft: p.minLotSqft, sideFt: p.sideFt, rearFt: p.rearFt, frontBehindFacadeFt: p.frontBehindFacadeFt, maxPctOfPrimary: p.maxPctOfPrimary ?? 0, maxAduSqft: p.maxAduSqft ?? 0 } : { ...s, aduCity: key };
   });
   const resetSettings = () => setSettings(DEFAULT_SETTINGS);
   const setHome = () => {
@@ -647,7 +655,8 @@ export default function App({ profile, signOut } = {}) {
     name: settings.aduCity, minLotSqft: settings.minLotSqft ?? KEARNS_PROFILE.minLotSqft,
     sideFt: settings.sideFt ?? KEARNS_PROFILE.sideFt, rearFt: settings.rearFt ?? KEARNS_PROFILE.rearFt,
     frontYardFt: KEARNS_PROFILE.frontYardFt, frontBehindFacadeFt: settings.frontBehindFacadeFt ?? KEARNS_PROFILE.frontBehindFacadeFt,
-  }), [settings.aduCity, settings.minLotSqft, settings.sideFt, settings.rearFt, settings.frontBehindFacadeFt]);
+    maxPctOfPrimary: settings.maxPctOfPrimary ?? 0, maxAduSqft: settings.maxAduSqft ?? 0,
+  }), [settings.aduCity, settings.minLotSqft, settings.sideFt, settings.rearFt, settings.frontBehindFacadeFt, settings.maxPctOfPrimary, settings.maxAduSqft]);
   const aduOverlay = useMemo(() => ({
     houseSeparationFt: settings.houseSeparationFt ?? BUSINESS_OVERLAY.houseSeparationFt,
     backinMinSideGapFt: settings.backinMinSideGapFt ?? BUSINESS_OVERLAY.backinMinSideGapFt,
@@ -671,8 +680,8 @@ export default function App({ profile, signOut } = {}) {
     if (!feat?.geometry) { setAduFit(null); return; }
     let alive = true; setAduFit(null); setAduLoading(true);
     computeParcelFit(feat, { models: ADU_MODELS, profile: aduProfile, overlay: aduOverlay })
-      .then((r) => { if (alive) setAduFit(r); })
-      .catch((e) => { if (alive) setAduFit({ status: "error", reason: String(e?.message || e) }); })
+      .then((r) => { if (alive) setAduFit({ ...r, _key: selected }); })
+      .catch((e) => { if (alive) setAduFit({ status: "error", reason: String(e?.message || e), _key: selected }); })
       .finally(() => { if (alive) setAduLoading(false); });
     return () => { alive = false; };
   }, [selected, aduProfile, aduOverlay]);
@@ -697,6 +706,18 @@ export default function App({ profile, signOut } = {}) {
   }, [selected]);
 
   const flyTo = (center, zoom = 18) => mapRef.current?.flyTo(center, zoom, { duration: 0.6 });
+
+  // open the full-screen 3D lot view for a parcel with a given model (used by the map card AND the Add-a-home tab)
+  const openLotView = (key, model, place, label) => {
+    const lyr = idToLayer.current[key]; if (!lyr) return;
+    const b = lyr.getBounds(), c = b.getCenter();
+    const latM = (b.getNorth() - b.getSouth()) * 111320;
+    const lngM = (b.getEast() - b.getWest()) * 111320 * Math.cos(c.lat * Math.PI / 180);
+    const groundMeters = Math.max(latM, lngM, 12) * 1.8;
+    const g = lyr.feature?.geometry;
+    const ring = g?.type === "MultiPolygon" ? g.coordinates[0][0] : g?.coordinates?.[0];
+    setShow3D({ center: { lat: c.lat, lng: c.lng }, groundMeters, ring, modelUrl: `${import.meta.env.BASE_URL}models/${model.glb}.glb`, dims: { widthFt: model.widthFt, lengthFt: model.lengthFt, heightFt: model.heightFt }, place: place || null, label: label || "Parcel" });
+  };
 
   const record = (key, outcome, props, center) => {
     let toDelete = null, toSave = false;
@@ -798,6 +819,7 @@ export default function App({ profile, signOut } = {}) {
 
   const sel = selected != null ? features.find((p) => p._key === selected) : null;
   const selKnock = selected != null ? knocks[selected] : null;
+  const fit = aduFit && aduFit._key === selected ? aduFit : null;   // only trust the fit result if it's for the CURRENT parcel
   const selOwner = useMemo(() => {
     void ownerVer;   // re-read the ref when owner data lands (batch enrich or on-demand fetch)
     return selected != null ? freshOwner(ownerCacheRef.current, String(selected)) : null;
@@ -805,6 +827,7 @@ export default function App({ profile, signOut } = {}) {
 
   const TABS = [
     { key: "map", label: "Map" },
+    { key: "sell", label: "Add a home" },
     { key: "trailer", label: "Trailer" },
     { key: "customers", label: "Customers" },
     { key: "stats", label: "Stats" },
@@ -871,39 +894,23 @@ export default function App({ profile, signOut } = {}) {
                 </div>
               )}
               <div className="dlabel">Which units fit</div>
-              {aduLoading && <div className="fitrow muted">Checking the yard…</div>}
-              {!aduLoading && aduFit?.status === "fits" && Object.values(aduFit.fits.reduce((acc, f) => {
-                const k = `${f.model.widthFt}x${f.model.lengthFt}`;   // one row per distinct footprint (dupes collapse)
-                if (!acc[k]) acc[k] = { key: k, w: f.model.widthFt, l: f.model.lengthFt, clearanceFt: f.clearanceFt, method: f.method, names: [] };
-                else if (f.clearanceFt > acc[k].clearanceFt) { acc[k].clearanceFt = f.clearanceFt; acc[k].method = f.method; }  // keep the group's best
-                acc[k].names.push(f.model.name.replace(/\s*\(.*\)/, ""));
-                return acc;
-              }, {})).map((g) => (
+              {(aduLoading || (selected != null && !fit)) && <div className="fitrow muted">Checking the yard…</div>}
+              {!aduLoading && fit?.status === "fits" && groupFits(fit.fits).map((g) => (
                 <div className="fitrow ok" key={g.key}>
                   <span className="dot" />
-                  <span className="fittxt"><b>{ftIn(g.w)} × {ftIn(g.l)}</b> · {Math.round(g.clearanceFt)} ft to spare · {g.method}<small>{g.names.join(", ")}</small></span>
+                  <span className="fittxt"><b>{ftIn(g.w)} × {ftIn(g.l)}</b> · {Math.round(g.clearanceFt)} ft to spare · {g.method}<small>{g.models.map((m) => m.name.replace(/\s*\(.*\)/, "")).join(", ")}</small></span>
                 </div>
               ))}
-              {!aduLoading && aduFit?.status === "not-eligible" && (
-                <div className="fitrow no">Not eligible — lot is {Math.round(aduFit.lotSqft).toLocaleString()} sq ft, under the {settings.minLotSqft.toLocaleString()} sq ft minimum.</div>
+              {!aduLoading && fit?.status === "not-eligible" && (
+                <div className="fitrow no">Not eligible — lot is {Math.round(fit.lotSqft).toLocaleString()} sq ft, under the {settings.minLotSqft.toLocaleString()} sq ft minimum.</div>
               )}
-              {!aduLoading && aduFit?.status === "no-fit" && <div className="fitrow no">No unit fits this yard after setbacks.</div>}
-              {!aduLoading && aduFit?.status === "needs-check" && (
-                <div className="fitrow warn">Needs a look — {NEEDS_CHECK_LABEL[aduFit.reason] || aduFit.reason}.</div>
+              {!aduLoading && fit?.status === "no-fit" && <div className="fitrow no">{fit.noFitReason === "over_size_cap" ? "A unit fits the yard, but every model is over this city’s ADU size limit for this home." : "No unit fits this yard after setbacks."}</div>}
+              {!aduLoading && fit?.status === "needs-check" && (
+                <div className="fitrow warn">Needs a look — {NEEDS_CHECK_LABEL[fit.reason] || fit.reason}.</div>
               )}
-              {!aduLoading && aduFit?.status === "error" && <div className="fitrow warn">Couldn’t check this lot right now.</div>}
+              {!aduLoading && fit?.status === "error" && <div className="fitrow warn">Couldn’t check this lot right now.</div>}
               <div className="disclaim">Estimate from county data — verify on site before committing.</div>
-              <button className="lot3d" onClick={() => {
-                const lyr = idToLayer.current[sel._key]; if (!lyr) return;
-                const b = lyr.getBounds(), c = b.getCenter();
-                const latM = (b.getNorth() - b.getSouth()) * 111320;
-                const lngM = (b.getEast() - b.getWest()) * 111320 * Math.cos(c.lat * Math.PI / 180);
-                const groundMeters = Math.max(latM, lngM, 12) * 1.8;
-                const g = lyr.feature?.geometry;
-                const ring = g?.type === "MultiPolygon" ? g.coordinates[0][0] : g?.coordinates?.[0];
-                const mdl = aduFit?.best?.model || ADU_MODELS[0];
-                setShow3D({ center: { lat: c.lat, lng: c.lng }, groundMeters, ring, modelUrl: `${import.meta.env.BASE_URL}models/${mdl.glb}.glb`, dims: { widthFt: mdl.widthFt, lengthFt: mdl.lengthFt, heightFt: mdl.heightFt }, place: aduFit?.best?.place || null, label: sel.PARCEL_ADD || "Parcel" });
-              }}>View on the lot in 3D</button>
+              <button className="lot3d" onClick={() => openLotView(sel._key, fit?.best?.model || ADU_MODELS[0], fit?.best?.place, sel.PARCEL_ADD || "Parcel")}>View on the lot in 3D</button>
               <div className="dlabel">Log a knock</div>
               <div className="outcomes">
                 {OUTCOMES.map((o) => (
@@ -1007,6 +1014,67 @@ export default function App({ profile, signOut } = {}) {
           </section>
         )}
 
+        {tab === "sell" && (
+          <section className="panel padded">
+            <div className="swrap sell">
+              <div className="phd">Add a home to the backyard</div>
+              {sel ? (
+                <div className="sellcard">
+                  <div className="sellhd">For {sel.PARCEL_ADD || "this home"}</div>
+                  {fit?.status === "fits" ? (
+                    <>
+                      <p className="sellp">A backyard home fits here:</p>
+                      {groupFits(fit.fits).map((g) => (
+                        <div className="fitrow ok" key={g.key}>
+                          <span className="dot" />
+                          <span className="fittxt"><b>{ftIn(g.w)} × {ftIn(g.l)}</b> · {g.models[0].beds} bed / {g.models[0].baths} bath<small>{g.models.map((m) => m.name.replace(/\s*\(.*\)/, "")).join(", ")}</small></span>
+                        </div>
+                      ))}
+                      <button className="lot3d" onClick={() => openLotView(sel._key, fit.best.model, fit.best.place, sel.PARCEL_ADD || "Parcel")}>See it in your yard</button>
+                      {fit.best?.model?.floorPlan && <button className="ghostbtn full" onClick={() => setFloorPlan(fit.best.model)}>View floor plan</button>}
+                    </>
+                  ) : (
+                    <p className="sellp muted">Check this home on the Map tab to see what fits the backyard.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="sellcard"><p className="sellp muted">Pick a home on the Map to show what fits their yard.</p></div>
+              )}
+
+              <div className="phd">Why add one</div>
+              <ul className="selllist">
+                <li><b>Extra income.</b> Rent it out — most of the time the rent more than covers the loan payment, so it pays for itself.</li>
+                <li><b>Room for family.</b> Aging parents, adult kids, or a guest suite.</li>
+                <li><b>Adds value.</b> A second dwelling raises what the property is worth.</li>
+                <li><b>Flexible space.</b> Home office, studio, or short-term rental.</li>
+              </ul>
+
+              <div className="phd">How to pay for it</div>
+              <p className="sellp"><b>Most of the time the rent covers the payment</b> — the tenant effectively pays it off for you.</p>
+              <ul className="selllist">
+                <li><b>Home equity / HELOC.</b> Borrow against the equity already built up.</li>
+                <li><b>Construction or conventional loan.</b></li>
+                <li><b>Retirement or investment account.</b></li>
+                <li><b>Cash or family financing.</b></li>
+              </ul>
+
+              <div className="phd">How it works</div>
+              <ol className="sellsteps">
+                <li>Pick a model</li>
+                <li>Permit &amp; site prep</li>
+                <li>Foundation set</li>
+                <li>Home delivered &amp; placed</li>
+                <li>Utilities hooked up</li>
+                <li>Move in or rent it out</li>
+              </ol>
+              <p className="snote">A manufactured home goes in far faster than a site-built addition.</p>
+
+              <div className="phd">The homes</div>
+              <button className="ghostbtn full" onClick={() => setTab("trailer")}>Browse models &amp; floor plans</button>
+            </div>
+          </section>
+        )}
+
         {tab === "trailer" && (
           <section className="panel padded">
             <div className="swrap">
@@ -1094,7 +1162,17 @@ export default function App({ profile, signOut } = {}) {
                   {RULE_OPTIONS.frontBehindFacadeFt.map((v) => <option key={v} value={v}>{v} ft</option>)}
                 </select>
               </label>
-              <p className="snote">Loaded from the selected city (from county code — verify locally; state ADU rules are changing).</p>
+              <label className="selrow"><span>Max ADU vs. home</span>
+                <select value={settings.maxPctOfPrimary} onChange={(e) => setSetting("maxPctOfPrimary", Number(e.target.value))}>
+                  {RULE_OPTIONS.maxPctOfPrimary.map((v) => <option key={v} value={v}>{v ? `${v}% of home` : "No cap"}</option>)}
+                </select>
+              </label>
+              <label className="selrow"><span>Max ADU size</span>
+                <select value={settings.maxAduSqft} onChange={(e) => setSetting("maxAduSqft", Number(e.target.value))}>
+                  {RULE_OPTIONS.maxAduSqft.map((v) => <option key={v} value={v}>{v ? `${v.toLocaleString()} sq ft` : "No cap"}</option>)}
+                </select>
+              </label>
+              <p className="snote">Loaded from the selected city (from county code — verify locally; state ADU rules are changing). Kearns/unincorporated SLCo has no size cap; SLC caps at 50% of the home, others vary.</p>
               <label className="selrow"><span>Distance from house</span>
                 <select value={settings.houseSeparationFt} onChange={(e) => setSetting("houseSeparationFt", Number(e.target.value))}>
                   {RULE_OPTIONS.houseSeparationFt.map((v) => <option key={v} value={v}>{v} ft</option>)}

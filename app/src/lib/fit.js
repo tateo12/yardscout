@@ -228,6 +228,16 @@ function sideGapFt(best, constraints, w) {
   return ft(Math.max(0, minGap));
 }
 
+// ---------- per-city ADU size cap ----------
+// Max allowed ADU floor area (sq ft) for a home, from the jurisdiction profile. null = uncapped.
+// maxPctOfPrimary is a % of the primary home's sq ft; maxAduSqft is an absolute ceiling. The tighter wins.
+export function aduSizeCap({ maxPctOfPrimary, maxAduSqft } = {}, primarySqft = 0) {
+  const caps = [];
+  if (maxPctOfPrimary && primarySqft > 0) caps.push((maxPctOfPrimary / 100) * primarySqft);
+  if (maxAduSqft) caps.push(maxAduSqft);
+  return caps.length ? Math.min(...caps) : null;
+}
+
 // ---------- color ----------
 // one stable score per parcel: normalized clearance of the best-fitting model. count is a separate badge.
 export function fitScore(clearanceFt, model) {

@@ -22,6 +22,10 @@ export const KEARNS_PROFILE = {
   rearFt: 10,            // sourced
   frontYardFt: 20,       // front-yard setback for the parcel's street edge
   frontBehindFacadeFt: 10, // ADU must sit >= this far behind the house's front facade (sourced)
+  maxPctOfPrimary: 0,    // ADU floor area may not exceed this % of the primary home. 0 = NO CAP.
+  maxAduSqft: 0,         // absolute ADU floor-area cap (sq ft). 0 = none. Unincorporated SLCo/Kearns caps NEITHER (verified).
+  // NOTE: other cities DO cap size — Salt Lake City 50% of primary (excl. garage), Bountiful 40%, South Jordan 35%/1500sf.
+  // Add those as CITY_PROFILES when their setbacks are verified; the cap then auto-applies per selected city.
 };
 
 // Business practice (not code): the crew's own placement rules.
@@ -32,10 +36,10 @@ export const BUSINESS_OVERLAY = {
 
 // City profiles the owner can switch between (the master dropdown). Add cities as the business expands.
 export const CITY_PROFILES = [
-  { key: "slco-kearns", name: "Salt Lake County — Kearns", minLotSqft: 7000, sideFt: 5, rearFt: 10, frontYardFt: 20, frontBehindFacadeFt: 10 },
+  { key: "slco-kearns", name: "Salt Lake County — Kearns", minLotSqft: 7000, sideFt: 5, rearFt: 10, frontYardFt: 20, frontBehindFacadeFt: 10, maxPctOfPrimary: 0, maxAduSqft: 0 },
 ];
 
-// Curated dropdown options — no free-text.
+// Curated dropdown options — no free-text. 0 = "no cap" for the size limits.
 export const RULE_OPTIONS = {
   minLotSqft: [6000, 7000, 8000, 10000],
   sideFt: [5, 8, 10],
@@ -43,6 +47,8 @@ export const RULE_OPTIONS = {
   frontBehindFacadeFt: [5, 10, 15],
   houseSeparationFt: [6, 10, 15, 20, 25],
   backinMinSideGapFt: [12, 14, 16, 18, 20],
+  maxPctOfPrimary: [0, 35, 40, 50, 75],
+  maxAduSqft: [0, 800, 1000, 1200, 1500],
 };
 
 // Things the map/data can't confirm — the rep verifies these on site before committing.
@@ -59,4 +65,5 @@ export const NEEDS_CHECK_LABEL = {
   nonconvex_parcel: "unusual lot shape",
   below_min_lot: "lot is under 7,000 sq ft",
   no_room: "no room after setbacks",
+  home_size_unknown: "home size unknown (needed for this city's size cap)",
 };

@@ -1,7 +1,7 @@
 // Live geodata for the ADU fit engine: parcels, existing-house footprints, street direction.
 // All three layers are free UGRC ArcGIS services on the same org (open CORS). Works in browser + node (global fetch).
 import { area as turfArea, convex as turfConvex, booleanPointInPolygon, centroid as turfCentroid, nearestPointOnLine, point, polygon as turfPolygon, lineString } from "@turf/turf";
-import { makeFrame, ringToLocal, buildZone, fitModel, fitScore, scoreToColor } from "./fit.js";
+import { makeFrame, ringToLocal, buildZone, fitModel, fitScore, scoreToColor, aduSizeCap } from "./fit.js";
 
 const SQFT_PER_M2 = 10.7639104;
 
@@ -135,7 +135,17 @@ export function fitParcelWith(parcel, buildings, roads, { models, profile, overl
   const z = buildZone({ parcelLocal: ring, lotSqft, house: houseLocal, frontDir, profile });
   if (!z.ok) return { status: "needs-check", reason: z.reason, ...base };
 
+  // a %-of-primary size cap needs the home's sq ft; if the city caps by % but the home size is unknown, we can't
+  // verify eligibility -> fail closed to needs-check (never triggers for uncapped Kearns).
+  if ((profile.maxPctOfPrimary || 0) > 0 && !(parcel.properties?.BLDG_SQFT > 0)) {
+    return { status: "needs-check", reason: "home_size_unknown", ...base };
+  }
   const results = models.map((m) => ({ model: m, ...fitModel({ zone: z.zone, constraints: z.constraints, house: houseLocal, model: m, overlay }) }));
+  // per-city ADU size cap (floor area): hard-exclude units too big for this home. Kearns = uncapped (no effect).
+  const capSqft = aduSizeCap(profile, parcel.properties?.BLDG_SQFT || 0);
+  if (capSqft != null) for (const r of results) {
+    if (r.fits && r.model.widthFt * r.model.lengthFt > capSqft + 1) { r.fits = false; r.method = null; r.overSize = true; }
+  }
   const fits = results.filter((r) => r.fits).sort((a, b) => b.clearanceFt - a.clearanceFt);
   const best = fits[0] || null;
   // export where the best unit actually fits (most-room spot the engine found) as lat/lng + heading, so the 3D
@@ -145,7 +155,9 @@ export function fitParcelWith(parcel, buildings, roads, { models, profile, overl
     best.place = { lng, lat, headingRad: Math.atan2(best.placement.u[1], best.placement.u[0]) };
   }
   const color = best ? scoreToColor(fitScore(best.clearanceFt, best.model), { fits: true }) : "#dd5145";
-  return { status: fits.length ? "fits" : "no-fit", fits, results, best, color, ...base };
+  // if nothing fits ONLY because units exceed the city's size cap, tell the UI so it can say why
+  const noFitReason = !fits.length && results.some((r) => r.overSize) ? "over_size_cap" : null;
+  return { status: fits.length ? "fits" : "no-fit", fits, results, best, color, noFitReason, ...base };
 }
 
 // Street direction as a LOCAL-meters unit vector (house -> street), from the parcel centroid toward the
