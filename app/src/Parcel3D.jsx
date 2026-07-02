@@ -37,7 +37,7 @@ export default function Parcel3D({ center, groundMeters, ring, modelUrl, dims, p
       const W = mount.clientWidth, H = mount.clientHeight;
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x0e1116);
+      scene.background = new THREE.Color(0xE4DDCE);   // warm paper sky (matches the app theme)
       const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 5000);
       camera.position.set(groundMeters * 0.45, groundMeters * 0.55, groundMeters * 0.7);
 

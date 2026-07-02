@@ -2,16 +2,18 @@
   --ui: "Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  --graphite: #14181e;   /* chrome */
-  --ink:      #1d242d;   /* raised chrome */
-  --snow:     #eef1f0;   /* light panel bg */
+  /* warm paper + evergreen — matches the marketing site */
+  --graphite: #FAF7F1;   /* chrome (now warm paper, not dark) */
+  --ink:      #F2ECE1;   /* raised chrome / alt band */
+  --snow:     #F2ECE1;   /* light panel bg (warm) */
   --card:     #ffffff;
-  --line:     #e0e4e6;
-  --text:     #161b22;
-  --muted:    #6a737e;
-  --green:    #1fa36b;   /* brand / "a yard that works" */
-  --amber:    #f5a524;
-  --red:      #dd5145;
+  --line:     #E4DDCE;   /* warm hairline */
+  --text:     #211E18;   /* ink */
+  --muted:    #8A8477;
+  --green:    #1B6E47;   /* evergreen brand */
+  --green-strong: #15583A;
+  --amber:    #C68A2E;   /* ochre (warm tier) */
+  --red:      #C4552D;   /* terracotta */
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }

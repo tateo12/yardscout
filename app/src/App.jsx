@@ -65,10 +65,10 @@ const loadOwners = () => {
   } catch { return new Map(); }
 };
 // equity-likelihood tiers: shade the fitting lots by lead quality (hot = long-held/deep equity). Estimate, not a $ amount.
-const EQ = {  // "Ember" scheme, softened: same hues (fire/gold/blue) desaturated ~25% to sit with the graphite UI, not read as loud primaries
-  hot:  { color: "#dc5f26", label: "Hot lead" },        // muted fire orange — long-held, deep equity; still pops
-  warm: { color: "#d89c34", label: "Warm lead" },       // muted amber — mid tenure/unknown
-  cool: { color: "#5a7c99", label: "Lower priority" },  // muted steel blue — recent buyer, recedes
+const EQ = {  // "Ember" tiers tuned for the warm-paper theme (match the marketing site)
+  hot:  { color: "#C4552D", label: "Hot lead" },        // terracotta — long-held, deep equity
+  warm: { color: "#C68A2E", label: "Warm lead" },       // ochre — mid tenure/unknown
+  cool: { color: "#4F7A99", label: "Lower priority" },  // slate blue — recent buyer, recedes
 };
 // read an owner record only if still within TTL; purge it on read otherwise (enforces freshness everywhere, not just at load)
 const freshOwner = (cache, key) => {
@@ -93,9 +93,9 @@ const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (typeof navigator !== "undefined" 
 const IS_ANDROID = /Android/.test(UA);
 
 const TIER = {
-  green:  { color: "#1fa36b", label: "Room to place" },
-  yellow: { color: "#f5a524", label: "Tight" },
-  red:    { color: "#dd5145", label: "No room" },
+  green:  { color: "#1B6E47", label: "Room to place" },
+  yellow: { color: "#C68A2E", label: "Tight" },
+  red:    { color: "#C4552D", label: "No room" },
 };
 const OUTCOMES = [
   { key: "booked",         label: "Booked",         color: "#2563eb" },  // blue — the win
@@ -149,7 +149,7 @@ const styleFor = (feat, _s) => {   // _s (settings) kept for call-site symmetry;
   const c = p._ownerTier ? EQ[p._ownerTier].color : PENDING_COLOR;
   return { color: c, weight: 2, opacity: 1, fillColor: c, fillOpacity: 0.82 };  // border matches the inside
 };
-const PENDING_COLOR = "#6b7076";  // fits, not yet rated (neutral, on-brand with the graphite UI)
+const PENDING_COLOR = "#A7A092";  // fits, not yet rated (warm neutral, on-brand with the paper theme)
 // invisible fill so non-winners stay clickable (tap any house at a door) without cluttering the map
 const HIDDEN_STYLE = { stroke: false, fill: true, fillColor: "#16b866", fillOpacity: 0.001 };
 
