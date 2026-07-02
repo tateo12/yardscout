@@ -55,7 +55,7 @@ export const RULE_OPTIONS = {
 // ---- Per-jurisdiction rule registry (auto-applied by the parcel's city/county) ----
 // Bump when any profile below changes so the fit cache re-judges. Rules are VERIFIED per city, never guessed;
 // a city not listed here falls back to its county baseline and is flagged "unverified" in the UI.
-export const JURISDICTIONS_VERSION = "utah-slco-2026-07-02b";
+export const JURISDICTIONS_VERSION = "utah-slco-2026-07-02c";
 
 // Salt Lake County ordinance = the baseline for all unincorporated SLCo (Kearns + the metro townships).
 export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE };
@@ -88,6 +88,16 @@ const CITY_RULES = {
   "alpine":           P("Alpine",           { minLotSqft: 217800, sideFt: 12, rearFt: 12, frontBehindFacadeFt: 30, maxPctOfPrimary: 0, maxAduSqft: 0 }),   // detached only as conditional guest house, 5-acre min
   "highland":         P("Highland",         { detachedAllowed: false }),   // detached banned (internal/attached only)
   "saratoga springs": P("Saratoga Springs", { detachedAllowed: false }),   // detached banned (internal only)
+  // ---- Utah County (south) ----
+  "provo":            P("Provo",            { minLotSqft: 0,      sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),
+  "orem":             P("Orem",             { detachedAllowed: false }),   // detached banned (internal only)
+  "springville":      P("Springville",      { minLotSqft: 0,      sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),
+  "spanish fork":     P("Spanish Fork",     { minLotSqft: 6000,   sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1000 }),
+  "mapleton":         P("Mapleton",         { minLotSqft: 21780,  frontBehindFacadeFt: 10, maxPctOfPrimary: 40, maxAduSqft: 1000 }),   // setbacks zone-dependent -> baseline
+  "elk ridge":        P("Elk Ridge",        { minLotSqft: 0,      sideFt: 8,  rearFt: 8,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),
+  "salem":            P("Salem",            { minLotSqft: 87120,  sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),   // detached only on >2-acre lots, in an accessory structure
+  "santaquin":        P("Santaquin",        { minLotSqft: 0,      sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1600 }),
+  "woodland hills":   P("Woodland Hills",   { minLotSqft: 19000,  sideFt: 20, rearFt: 30, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),   // conservative setbacks (internal code conflict); HOA may also bar
 };
 export const JURISDICTIONS = Object.fromEntries([
   ...UNINCORPORATED_SLCO.map((c) => [c, { profile: KEARNS_PROFILE, verified: true }]),
