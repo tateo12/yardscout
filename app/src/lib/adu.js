@@ -125,7 +125,7 @@ const CITY_RULES = {
   "salem":            P("Salem",            { minLotSqft: 87120,  sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),   // detached only on >2-acre lots, in an accessory structure
   "santaquin":        P("Santaquin",        { minLotSqft: 0,      sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1600 }),
   "woodland hills":   P("Woodland Hills",   { minLotSqft: 19000,  sideFt: 20, rearFt: 30, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),   // conservative setbacks (internal code conflict); HOA may also bar
-  "fairfield":        P("Fairfield",        { minLotSqft: 43560,  sideFt: 15, rearFt: 40, frontBehindFacadeFt: 0,  maxPctOfPrimary: 35, maxAduSqft: 900 }),   // rural, 1-acre min
+  "fairfield":        P("Fairfield",        { minLotSqft: 43560,  sideFt: 15, rearFt: 40, frontBehindFacadeFt: 0,  maxPctOfPrimary: 35, maxAduSqft: 900 }),   // §10.7.255 (Ord 2024-14): 35% of FOOTPRINT or 900 sf, whichever less, PC override; 1-acre min. "Footprint" undefined -> conservative haircut ~= footprint basis anyway
   "genola":           P("Genola",           { detachedAllowed: false }),   // detached banned (internal only)
   "goshen":           P("Goshen",           { detachedAllowed: false }),   // detached banned (internal only)
   "payson":           P("Payson",           { minLotSqft: 6000,  sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1200 }),   // detached legalized Feb 2024 (§13.20.221)
