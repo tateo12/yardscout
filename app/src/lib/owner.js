@@ -71,6 +71,18 @@ export function leadScore(rec, now = new Date()) {
 // Hot = long-held (deep equity). Cool = recent buyer (fresh mortgage, thin equity). Warm = middle / unknown tenure.
 export const equityTier = (score) => (score >= 75 ? "hot" : score >= 50 ? "warm" : "cool");
 
+// Equity-likelihood when tenure is UNKNOWN (Utah County has no sale/deed date). Leans on age (older -> more likely
+// paid down), owner-occupancy, and value band, so the map still spreads hot/warm/cool instead of clustering all-warm.
+// A proxy, not tenure-proven -- still labeled "estimate" in the UI.
+export function leadScoreNoTenure({ marketValue, yearBuilt, occupancy } = {}) {
+  let s = occupancy === "owner-occupant" ? 45 : occupancy === "investor" ? 40 : 30;
+  const yb = yearBuilt || 0;
+  s += yb <= 0 ? 10 : yb <= 1970 ? 30 : yb <= 1990 ? 22 : yb <= 2005 ? 12 : yb <= 2015 ? 4 : 0;
+  const v = marketValue || 0;
+  s += v <= 0 ? 6 : v < 200000 ? 6 : v <= 650000 ? 15 : v <= 900000 ? 8 : 2;
+  return Math.max(0, Math.min(100, Math.round(s)));
+}
+
 // Raw county attributes -> compact record the UI reads. `fetchedAt` is stamped by the fetch layer.
 export function toOwnerRecord(a, now = new Date(), fetchedAt = Date.now()) {
   const occ = classifyOccupancy(a);
@@ -86,8 +98,41 @@ export function toOwnerRecord(a, now = new Date(), fetchedAt = Date.now()) {
     marketValue: a.total_full_mkt || null,
     yearBuilt: a.year_built || null,
     sqft: a.total_sq_ft || null,
+    aboveGradeSqft: a.abv_grnd_sf || null,   // above-grade only; exact %-cap denominator (vs. basement-inclusive total)
     score,
     tier: equityTier(score),
+    fetchedAt,
+  };
+}
+
+// Utah County occupancy: entity name -> investor; owner street matches the property -> owner-occupant;
+// residential exemption -> owner-occupant; owner in a different city -> investor; else unknown. Heuristic (labeled).
+export function classifyOccupancyUC(a) {
+  if (ENTITY.test(String(a.OWNER_NAME || "").toUpperCase())) return { tag: "investor", why: "entity-owned (LLC/Inc/etc.)" };
+  const os = normAddr(a.OWN_STREET_ADDRESS), site = normAddr(a.SITE_FULL_ADDRESS);
+  if (os && site && os.length > 4 && site.includes(os)) return { tag: "owner-occupant", why: "owner mails to the property" };
+  if (/^\s*(Y|YES|TRUE|1)/i.test(String(a.EXEMPT_RES || ""))) return { tag: "owner-occupant", why: "claims the residential exemption" };
+  const oc = normAddr(a.OWN_CITY), sc = normAddr(a.SITE_CITY);
+  if (oc && sc && oc !== sc) return { tag: "investor", why: "owner lives in a different city" };
+  return { tag: "unknown", why: "insufficient address data" };
+}
+
+// Utah County lead record from the assessor OwnerParcel layer. Owner name + real occupancy + value + above-grade.
+// No tenure exists in Utah County, so tYrs stays null and leads cap below "hot" (see docs/DATA_SOURCES.md).
+export function toOwnerRecordUC(a, now = new Date(), fetchedAt = Date.now()) {
+  const occ = classifyOccupancyUC(a);
+  const value = a.MKT_CUR_VALUE || null;
+  const score = leadScoreNoTenure({ marketValue: value, yearBuilt: a.YEARBLT_RES, occupancy: occ.tag });
+  return {
+    parcelId: String(a.PARCELID),
+    ownerName: a.OWNER_NAME || null,
+    occupancy: occ.tag, occupancyWhy: occ.why, pitch: pitchFor(occ.tag),
+    tenureYrs: null,
+    marketValue: value,
+    yearBuilt: a.YEARBLT_RES || null,
+    sqft: a.GLA_RES || a.TOTAL_ABOVE_GRADE_AREA || null,
+    aboveGradeSqft: a.TOTAL_ABOVE_GRADE_AREA || a.GLA_RES || null,
+    score, tier: equityTier(score),
     fetchedAt,
   };
 }
@@ -99,7 +144,7 @@ export function toOwnerRecordLIR(a, now = new Date(), fetchedAt = Date.now()) {
   const occ = a.PRIMARY_RES === "Y" ? "owner-occupant" : a.PRIMARY_RES === "N" ? "investor" : "unknown";
   const why = a.PRIMARY_RES === "Y" ? "claims the primary-residence exemption"
     : a.PRIMARY_RES === "N" ? "no primary-residence exemption (2nd home / rental)" : "occupancy unknown";
-  const score = leadScore({ date_created: null, total_full_mkt: a.TOTAL_MKT_VALUE, year_built: a.BUILT_YR }, now);
+  const score = leadScoreNoTenure({ marketValue: a.TOTAL_MKT_VALUE, yearBuilt: a.BUILT_YR, occupancy: occ });
   return {
     parcelId: String(a.PARCEL_ID),
     ownerName: null,                 // Utah County exposes no CORS-open owner-name+sale service (tenure unknown)

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
-import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership } from "./lib/geo";
+import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership, fetchUtahOwnership } from "./lib/geo";
 import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS, resolveJurisdiction, JURISDICTIONS_VERSION } from "./lib/adu";
 import { aduSizeCap, PRIMARY_ABOVEGRADE_FACTOR } from "./lib/fit";
-import { toOwnerRecord, toOwnerRecordLIR } from "./lib/owner";
+import { toOwnerRecord, toOwnerRecordLIR, toOwnerRecordUC } from "./lib/owner";
 import { sharePdf } from "./lib/share";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -503,19 +503,29 @@ export default function App({ profile, signOut } = {}) {
   const computeOwners = useCallback(async () => {
     const map = mapRef.current;
     if (!map || !layerRef.current || map.getZoom() < FIT_ZOOM) return;
-    const now = Date.now(); const needSL = []; const utahFeats = [];
+    const now = Date.now(); const needSL = []; const needUC = []; const ucFeats = new Map();
     layerRef.current.eachLayer((l) => {
       const p = l.feature.properties; const rec = ownerCacheRef.current.get(p._key);
       if (rec && now - (rec.fetchedAt || 0) <= OWNER_TTL) return;
-      // Salt Lake County -> rich assessor service (owner name + tenure). Elsewhere (Utah County) -> build from LIR fields.
+      // Salt Lake County -> SLCo assessor service (owner + tenure). Utah County -> Utah County OwnerParcel service (owner + occupancy + value, no tenure).
       if (p.COUNTY_NAME === "Salt Lake County") needSL.push(p._key);
-      else utahFeats.push(l.feature);
+      else { needUC.push(p._key); ucFeats.set(p._key, l.feature); }
     });
-    if (!needSL.length && !utahFeats.length) return;
+    if (!needSL.length && !needUC.length) return;
     const nd = new Date();
-    // Utah County: no rich owner/sale service -> occupancy+value+age from the LIR fields already on the parcel (no fetch)
-    utahFeats.forEach((f) => ownerCacheRef.current.set(f.properties._key, toOwnerRecordLIR(f.properties, nd)));
     const token = ++ownerToken.current;
+    // Utah County: fetch the assessor OwnerParcel service; fall back to the parcel's LIR fields for any parcel it doesn't return.
+    if (needUC.length) {
+      let ucRaw = new Map();
+      try { ucRaw = await fetchUtahOwnership(needUC); } catch { ucRaw = new Map(); }
+      if (token !== ownerToken.current || !layerRef.current) return;
+      if (ucRaw.partial) setOwnerPartial(true);
+      for (const key of needUC) {
+        const attrs = ucRaw.get(key);
+        if (attrs) ownerCacheRef.current.set(key, toOwnerRecordUC(attrs, nd));
+        else { const f = ucFeats.get(key); if (f) ownerCacheRef.current.set(key, toOwnerRecordLIR(f.properties, nd)); }
+      }
+    }
     let raw = new Map();
     if (needSL.length) {
       try { raw = await fetchOwnership(needSL); } catch { raw = new Map(); }
@@ -728,8 +738,15 @@ export default function App({ profile, signOut } = {}) {
       const l = idToLayer.current[key];
       if (l && !flagsRef.current[key]) { l.feature.properties._ownerTier = r.tier; l.setStyle(styleFor(l.feature, settingsRef.current)); }
     };
-    // Outside Salt Lake County there's no rich owner service -> build from the parcel's LIR fields (no fetch)
-    if (feat && feat.properties.COUNTY_NAME !== "Salt Lake County") { applyRecord(toOwnerRecordLIR(feat.properties)); return; }
+    // Utah County: fetch the county OwnerParcel service (owner + occupancy + value); fall back to LIR fields if not returned
+    if (feat && feat.properties.COUNTY_NAME !== "Salt Lake County") {
+      let alive = true;
+      fetchUtahOwnership([key]).then((raw) => {
+        const attrs = raw.get(key);
+        if (alive) applyRecord(attrs ? toOwnerRecordUC(attrs) : toOwnerRecordLIR(feat.properties));
+      }).catch(() => { if (alive) applyRecord(toOwnerRecordLIR(feat.properties)); });
+      return () => { alive = false; };
+    }
     let alive = true;
     fetchOwnership([key]).then((raw) => {
       const attrs = raw.get(key);

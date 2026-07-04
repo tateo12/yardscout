@@ -64,7 +64,37 @@ export async function fetchRoads(bbox) {
 // envelope/boundary mismatch, no overfetch, no maxRecordCount surprise. Best-effort: a failing chunk is skipped,
 // never thrown, so the map degrades to fit-only. POST keeps long IN() lists off the URL.
 export const COUNTY = "https://apps.saltlakecounty.gov/slcogis/rest/services/Land/MapServer/1";
-const OWNER_FIELDS = "parcel_id,own_name,own_addr,own_citystate,prop_location,date_created,taxable_value,total_full_mkt,year_built,total_sq_ft,num_housing_units,lot_use";
+const OWNER_FIELDS = "parcel_id,own_name,own_addr,own_citystate,prop_location,date_created,taxable_value,total_full_mkt,year_built,total_sq_ft,abv_grnd_sf,num_housing_units,lot_use";
+
+// Utah County owner/value data. Assessor "OwnerParcel" layer (maps.utahcounty.gov). CORS-open (server reflects Origin);
+// blocks bare bots but a browser request carries a UA automatically, so the app is fine. Join PARCELID = UGRC PARCEL_ID
+// (verified 1:1). No sale/deed date exists in Utah County (see docs/DATA_SOURCES.md) -> no tenure, leads cap below "hot".
+export const UTAH_COUNTY = "https://maps.utahcounty.gov/arcgis/rest/services/Parcels/Parcel_TaxParcels/MapServer/2";
+const UC_OWNER_FIELDS = "PARCELID,OWNER_NAME,SITE_FULL_ADDRESS,SITE_CITY,OWN_STREET_ADDRESS,OWN_CITY,MKT_CUR_VALUE,TXBL_CUR_VALUE,YEARBLT_RES,GLA_RES,TOTAL_ABOVE_GRADE_AREA,EXEMPT_RES";
+
+export async function fetchUtahOwnership(parcelIds, { chunk = 120, signal } = {}) {
+  const ids = [...new Set((parcelIds || []).filter(Boolean).map(String))];
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += chunk) chunks.push(ids.slice(i, i + chunk));
+  const out = new Map(); // PARCELID -> raw county attributes
+  let failed = 0;
+  await Promise.all(chunks.map(async (slice) => {
+    const list = slice.map((id) => `'${id.replace(/'/g, "")}'`).join(",");
+    try {
+      const body = new URLSearchParams({ f: "json", returnGeometry: "false", outFields: UC_OWNER_FIELDS, where: `PARCELID IN (${list})` });
+      const r = await fetch(`${UTAH_COUNTY}/query`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body, signal });
+      if (!r.ok) throw new Error(`utah county ${r.status}`);
+      const j = await r.json();
+      if (j.error) throw new Error(j.error.message);
+      for (const f of j.features || []) {
+        const a = f.attributes || {};
+        if (a.PARCELID) out.set(String(a.PARCELID), a);
+      }
+    } catch (e) { failed++; if (typeof console !== "undefined") console.warn("fetchUtahOwnership chunk failed:", e?.message || e); }
+  }));
+  out.partial = failed > 0;
+  return out;
+}
 
 export async function fetchOwnership(parcelIds, { chunk = 150, signal } = {}) {
   const ids = [...new Set((parcelIds || []).filter(Boolean).map(String))];
