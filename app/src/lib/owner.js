@@ -91,3 +91,24 @@ export function toOwnerRecord(a, now = new Date(), fetchedAt = Date.now()) {
     fetchedAt,
   };
 }
+
+// Build a lead record from LIR fields alone — for counties with no rich owner/sale service (e.g. Utah County).
+// No vesting date (tenure unknown) and no owner name; occupancy comes from the primary-residence exemption flag.
+// `a` = the parcel's LIR properties (PRIMARY_RES, TOTAL_MKT_VALUE, BUILT_YR, BLDG_SQFT, PARCEL_ID).
+export function toOwnerRecordLIR(a, now = new Date(), fetchedAt = Date.now()) {
+  const occ = a.PRIMARY_RES === "Y" ? "owner-occupant" : a.PRIMARY_RES === "N" ? "investor" : "unknown";
+  const why = a.PRIMARY_RES === "Y" ? "claims the primary-residence exemption"
+    : a.PRIMARY_RES === "N" ? "no primary-residence exemption (2nd home / rental)" : "occupancy unknown";
+  const score = leadScore({ date_created: null, total_full_mkt: a.TOTAL_MKT_VALUE, year_built: a.BUILT_YR }, now);
+  return {
+    parcelId: String(a.PARCEL_ID),
+    ownerName: null,                 // Utah County exposes no CORS-open owner-name+sale service (tenure unknown)
+    occupancy: occ, occupancyWhy: why, pitch: pitchFor(occ),
+    tenureYrs: null,
+    marketValue: a.TOTAL_MKT_VALUE || null,
+    yearBuilt: a.BUILT_YR || null,
+    sqft: a.BLDG_SQFT || null,
+    score, tier: equityTier(score),
+    fetchedAt,
+  };
+}

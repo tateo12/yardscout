@@ -3,7 +3,7 @@ import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
 import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership } from "./lib/geo";
 import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS, resolveJurisdiction, JURISDICTIONS_VERSION } from "./lib/adu";
-import { toOwnerRecord } from "./lib/owner";
+import { toOwnerRecord, toOwnerRecordLIR } from "./lib/owner";
 import { sharePdf } from "./lib/share";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -502,19 +502,26 @@ export default function App({ profile, signOut } = {}) {
   const computeOwners = useCallback(async () => {
     const map = mapRef.current;
     if (!map || !layerRef.current || map.getZoom() < FIT_ZOOM) return;
-    const now = Date.now(); const need = [];
+    const now = Date.now(); const needSL = []; const utahFeats = [];
     layerRef.current.eachLayer((l) => {
-      const k = l.feature.properties._key; const rec = ownerCacheRef.current.get(k);
-      if (!rec || now - (rec.fetchedAt || 0) > OWNER_TTL) need.push(k);
+      const p = l.feature.properties; const rec = ownerCacheRef.current.get(p._key);
+      if (rec && now - (rec.fetchedAt || 0) <= OWNER_TTL) return;
+      // Salt Lake County -> rich assessor service (owner name + tenure). Elsewhere (Utah County) -> build from LIR fields.
+      if (p.COUNTY_NAME === "Salt Lake County") needSL.push(p._key);
+      else utahFeats.push(l.feature);
     });
-    if (!need.length) return;
-    const token = ++ownerToken.current;
-    let raw;
-    try { raw = await fetchOwnership(need); } catch { return; }
-    if (token !== ownerToken.current || !layerRef.current) return;   // a newer move superseded this
-    setOwnerPartial(!!raw.partial);   // some chunks failed -> tell the user it's incomplete
+    if (!needSL.length && !utahFeats.length) return;
     const nd = new Date();
-    raw.forEach((attrs, id) => ownerCacheRef.current.set(id, toOwnerRecord(attrs, nd)));
+    // Utah County: no rich owner/sale service -> occupancy+value+age from the LIR fields already on the parcel (no fetch)
+    utahFeats.forEach((f) => ownerCacheRef.current.set(f.properties._key, toOwnerRecordLIR(f.properties, nd)));
+    const token = ++ownerToken.current;
+    let raw = new Map();
+    if (needSL.length) {
+      try { raw = await fetchOwnership(needSL); } catch { raw = new Map(); }
+      if (token !== ownerToken.current || !layerRef.current) return;   // a newer move superseded this
+      setOwnerPartial(!!raw.partial);   // some chunks failed -> tell the user it's incomplete
+      raw.forEach((attrs, id) => ownerCacheRef.current.set(id, toOwnerRecord(attrs, nd)));
+    }
     layerRef.current.eachLayer((l) => {
       const p = l.feature.properties, rec = ownerCacheRef.current.get(p._key);
       if (rec) { p._ownerTier = rec.tier; if (!flagsRef.current[p._key]) l.setStyle(styleFor(l.feature, settingsRef.current)); }
@@ -547,7 +554,7 @@ export default function App({ profile, signOut } = {}) {
       geometry: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(","),
       geometryType: "esriGeometryEnvelope", inSR: "4326",
       spatialRel: "esriSpatialRelIntersects",
-      outFields: "PARCEL_ID,PARCEL_ADD,PARCEL_CITY,COUNTY_NAME,PARCEL_ACRES,BLDG_SQFT,PRIMARY_RES",
+      outFields: "PARCEL_ID,PARCEL_ADD,PARCEL_CITY,COUNTY_NAME,PARCEL_ACRES,BLDG_SQFT,PRIMARY_RES,TOTAL_MKT_VALUE,BUILT_YR",
       returnGeometry: "true", outSR: "4326", f: "geojson", resultRecordCount: String(PAGE),
     };
     const token = ++reqToken.current;
@@ -712,16 +719,21 @@ export default function App({ profile, signOut } = {}) {
     if (selected == null) return;
     const key = String(selected), rec = ownerCacheRef.current.get(key);
     if (rec && Date.now() - (rec.fetchedAt || 0) <= OWNER_TTL) return;
-    let alive = true;
-    fetchOwnership([key]).then((raw) => {
-      const attrs = raw.get(key);
-      if (!alive || !attrs) return;
-      const r = toOwnerRecord(attrs);
+    const feat = idToLayer.current[key]?.feature;
+    const applyRecord = (r) => {
       ownerCacheRef.current.set(key, r);
       persistOwners();
       setOwnerVer((v) => v + 1);
       const l = idToLayer.current[key];
       if (l && !flagsRef.current[key]) { l.feature.properties._ownerTier = r.tier; l.setStyle(styleFor(l.feature, settingsRef.current)); }
+    };
+    // Outside Salt Lake County there's no rich owner service -> build from the parcel's LIR fields (no fetch)
+    if (feat && feat.properties.COUNTY_NAME !== "Salt Lake County") { applyRecord(toOwnerRecordLIR(feat.properties)); return; }
+    let alive = true;
+    fetchOwnership([key]).then((raw) => {
+      const attrs = raw.get(key);
+      if (!alive || !attrs) return;
+      applyRecord(toOwnerRecord(attrs));
     }).catch(() => {});
     return () => { alive = false; };
   }, [selected]);
