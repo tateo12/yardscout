@@ -3,6 +3,7 @@ import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
 import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership } from "./lib/geo";
 import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS, resolveJurisdiction, JURISDICTIONS_VERSION } from "./lib/adu";
+import { aduSizeCap, PRIMARY_ABOVEGRADE_FACTOR } from "./lib/fit";
 import { toOwnerRecord, toOwnerRecordLIR } from "./lib/owner";
 import { sharePdf } from "./lib/share";
 import L from "leaflet";
@@ -855,6 +856,15 @@ export default function App({ profile, signOut } = {}) {
   const fit = aduFit && aduFit._key === selected ? aduFit : null;   // only trust the fit result if it's for the CURRENT parcel
   const ruleCounty = sel?.COUNTY_NAME || (CITY_PROFILES.find((c) => c.key === settings.aduCity)?.name || "this county");
   const selJuris = sel ? resolveJurisdiction({ city: sel.PARCEL_CITY, county: sel.COUNTY_NAME, fallback: aduProfile }) : null;   // rules for THIS parcel's city
+  // house sqft (assessor finished area, incl. finished basement) + what the city's size cap works out to for THIS home
+  const selHouseSqft = sel?.BLDG_SQFT || 0;
+  const selEffCap = selJuris
+    ? aduSizeCap(selJuris.profile, selJuris.profile.capBasement === "included" ? selHouseSqft : selHouseSqft * PRIMARY_ABOVEGRADE_FACTOR)
+    : null;
+  const selEffCapLabel = !selJuris ? ""
+    : selEffCap != null ? `~${Math.round(selEffCap).toLocaleString()} sq ft`
+    : (selJuris.profile.maxPctOfPrimary > 0 && selHouseSqft <= 0) ? "needs home size"
+    : "no cap";
   const selOwner = useMemo(() => {
     void ownerVer;   // re-read the ref when owner data lands (batch enrich or on-demand fetch)
     return selected != null ? freshOwner(ownerCacheRef.current, String(selected)) : null;
@@ -915,7 +925,9 @@ export default function App({ profile, signOut } = {}) {
                   <div><span>Side setback</span><b>{selJuris.profile.sideFt} ft</b></div>
                   <div><span>Rear setback</span><b>{selJuris.profile.rearFt} ft</b></div>
                   <div><span>Behind house front</span><b>{selJuris.profile.frontBehindFacadeFt} ft</b></div>
+                  <div><span>House size</span><b>{selHouseSqft > 0 ? `${selHouseSqft.toLocaleString()} sq ft` : "unknown"}</b></div>
                   <div><span>Max ADU size</span><b>{sizeCapLabel(selJuris.profile)}</b></div>
+                  <div><span>Max ADU here</span><b>{selEffCapLabel}</b></div>
                   <div><span>Off the house</span><b>{aduOverlay.houseSeparationFt} ft</b></div>
                   <div><span>Owner-occupied</span><b>Required</b></div>
                   <div><span>Max height</span><b>≤ 20 ft</b></div>
