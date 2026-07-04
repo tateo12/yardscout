@@ -106,10 +106,20 @@ For dealers who won't staff a field team, offer managed canvassing on top of the
 ### ADU / manufactured-home niche
 No known tool combines parcel-level ADU fit + owner/equity scoring + canvassing CRM. Competitors are point tools: generic canvassing CRMs (SalesRabbit, SPOTIO), parcel/GIS viewers (Regrid), and static canvassing lead lists. The integrated loop is the gap we fill.
 
-### Solar (adjacent, likely more mature)
-Solar residential sales is a much larger, older door-knocking industry, so it almost certainly has more developed tooling. **A dedicated competitive study is in progress** (see the `solar-scout` research task) - it will populate this section with named products, pricing norms, and a white-space read. Key question being answered: do solar teams already have a single tool that scores every roof + qualifies the owner + runs the canvass, or do they stitch separate tools together? The answer tells us whether "Yardscout for solar" is white space or crowded, and what feature/pricing expectations a solar entrant would face.
+### Solar (adjacent, researched 2026-07-04) - RED OCEAN, do not chase
+Dedicated study (`solar-scout`) verdict: **solar door-knocking is crowded and mature, and Yardscout's exact three-part combo already exists there.** This is the opposite of the ADU niche, and it reframes solar from "obvious first expansion" to "concept-validation, not a market to enter."
 
-_(This section to be updated when solar-scout returns.)_
+- **Closest full-stack analog: SalesRabbit + its DataGrid AI add-on** (85k+ users). DataGrid AI scores every home nationwide 1-10 on income, home value, equity, owner/renter, etc., *inside* the market-leading two-role canvassing CRM. Structurally identical to Yardscout minus rooftop physical-fit. Pricing: ~$19-31/user/mo base + ~$19-31 for DataGrid (bundled ~$100-150/user/mo).
+- **Second: PropertyRadar** - owner + high-equity list-building with built-in field/route/GPS canvassing; the closest analog to Yardscout's owner/equity list piece.
+- **Physical feasibility is commoditized:** Google Solar API (free-ish per-address roof potential), Sun Number (1-100 roof suitability), Aurora Solar (design leader, ~$159-259/user/mo). These are the solar analog of the free public parcel data Yardscout uses.
+- **Propensity-as-infrastructure exists:** Faraday.ai powers pre-knock scoring for solar orgs (Momentum Solar cut calls-per-appointment 33%).
+- **Lead marketplaces** (EnergySage, Modernize) sell leads at ~$25-150+/lead, appointments $150-500.
+
+**The one thin white space:** a *blended* physical-AND-financial pre-knock score. Today a solar rep gets a financial Buyer Score OR a roof-suitability score, rarely one fused "physically viable AND owner can finance" number driving the map. Everything else (owner/equity enrichment, property lines on satellite, two-role CRM, per-seat pricing) is table stakes in solar.
+
+**Table-stakes rep features (borrow these):** live GPS tracking, pin-drop disposition, route optimization, in-field e-sign + single-visit proposal, Salesforce/HubSpot sync. **Pricing norms to borrow:** per-seat $20-260/user/mo is normal; selling data/scoring as a $19-31/seat add-on is accepted; flat-by-volume (Enerflo) and free-funded-by-referrals (OpenSolar) both exist.
+
+**Strategic implication:** "Yardscout for solar" would be a late, undifferentiated entrant. The value of this research is the *inverse*: solar proves the concept works and is worth real money, and it confirms that **the ADU/backyard-structure niche is genuinely greenfield** - nobody has assembled this stack there. It also means the *first expansion vertical should NOT be solar* - pick a trade with no incumbent tooling (RV pad, shop/garage, fence, concrete) rather than fighting SalesRabbit/PropertyRadar. Caveat: several vendors hide pricing behind sales calls, so competitor figures are directional; Aurora's tiers are from third-party reviews.
 
 ---
 
@@ -198,7 +208,7 @@ If you stay software-first (recommended), the partner you most need is a **techn
 ## 14. Open questions to resolve
 
 - Gavin's real trailer size(s), placements/winter, preferred yard size (blocks scoring calibration).
-- Which adjacent vertical is the best second market (pending solar competitive study).
+- Which adjacent vertical is the best second market. **Resolved re solar: NOT solar** (red ocean, combo already productized by SalesRabbit/PropertyRadar). Pick an un-tooled trade instead (RV pad, shop/garage, fence, concrete). Still open: which of those has the best combination of ticket size, physical-fit relevance, and canvassing culture.
 - SaaS-only vs managed-canvassing - decide before taking an ops partner.
 - Hosting/domain migration (Cloudflare Pages/Netlify + a domain Tate doesn't yet own).
 - Whether to pursue the attorney-review credential now or after first revenue.
