@@ -55,7 +55,7 @@ export const RULE_OPTIONS = {
 // ---- Per-jurisdiction rule registry (auto-applied by the parcel's city/county) ----
 // Bump when any profile below changes so the fit cache re-judges. Rules are VERIFIED per city, never guessed;
 // a city not listed here falls back to its county baseline and is flagged "unverified" in the UI.
-export const JURISDICTIONS_VERSION = "utah-slco-2026-07-04d";
+export const JURISDICTIONS_VERSION = "utah-slco-2026-07-04e";
 
 // Salt Lake County ordinance = the baseline for all unincorporated SLCo (Kearns + the metro townships).
 export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE };
@@ -87,8 +87,8 @@ const CITY_RULES = {
   "west jordan":      P("West Jordan",      { minLotSqft: 10000,  sideFt: 6,  rearFt: 6,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),
   "west valley city": P("West Valley City", { detachedAllowed: false }),   // detached banned (internal only)
   "taylorsville":     P("Taylorsville",     { detachedAllowed: false }),   // detached banned (internal only)
-  "south jordan":     P("South Jordan",     { minLotSqft: 14520, sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 35, maxAduSqft: 1500 }),   // conditional, zone-limited
-  "draper":           P("Draper",           { minLotSqft: 12000, sideFt: 10, rearFt: 20, frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 0 }),   // R3 representative setbacks
+  "south jordan":     P("South Jordan",     { minLotSqft: 14520, sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 35, maxAduSqft: 1500 }),   // 35%/1,500 is a Planning-Commission REVIEW TRIGGER (vs "living area"), not a hard ban; kept as a soft cap for lead quality
+  "draper":           P("Draper",           { minLotSqft: 12000, sideFt: 10, rearFt: 20, frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 0, capBasement: "included" }),   // R3 setbacks; "Total Floor Area" defined to INCLUDE basement -> no haircut
   "riverton":         P("Riverton",         { minLotSqft: 0,     sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 10, maxPctOfPrimary: 0,  maxAduSqft: 0 }),
   "herriman":         P("Herriman",         { minLotSqft: 6000,  sideFt: 8,  rearFt: 10, frontBehindFacadeFt: 5,  maxPctOfPrimary: 50, maxAduSqft: 1000 }),   // detached legalized May 2026
   "bluffdale":        P("Bluffdale",        { minLotSqft: 0,     sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 0 }),   // R-1-10 representative setbacks

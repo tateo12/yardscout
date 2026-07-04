@@ -143,10 +143,14 @@ export function fitParcelWith(parcel, buildings, roads, { models, profile, overl
     return { status: "needs-check", reason: "home_size_unknown", ...base };
   }
   const results = models.map((m) => ({ model: m, ...fitModel({ zone: z.zone, constraints: z.constraints, house: houseLocal, model: m, overlay }) }));
-  // per-city ADU size cap (floor area): hard-exclude units too big for this home. BLDG_SQFT counts finished basement,
-  // so for the %-of-primary branch we haircut to the conservative above-grade estimate (see PRIMARY_ABOVEGRADE_FACTOR).
-  const primaryConservative = (parcel.properties?.BLDG_SQFT || 0) * PRIMARY_ABOVEGRADE_FACTOR;
-  const capSqft = aduSizeCap(profile, primaryConservative);
+  // per-city ADU size cap (floor area): hard-exclude units too big for this home. BLDG_SQFT counts finished basement.
+  // For the %-of-primary branch, whether we trust that full number depends on what the CITY's code means by its
+  // denominator: capBasement "included" (e.g. Draper "Total Floor Area") -> use BLDG_SQFT as-is; "excluded" or undefined
+  // (e.g. Kearns "square footage", undefined) -> haircut to a conservative above-grade estimate so we only pass homes
+  // clearly large enough to clear the cap. Default (unverified) is conservative.
+  const bldgSqft = parcel.properties?.BLDG_SQFT || 0;
+  const primaryForCap = profile.capBasement === "included" ? bldgSqft : bldgSqft * PRIMARY_ABOVEGRADE_FACTOR;
+  const capSqft = aduSizeCap(profile, primaryForCap);
   if (capSqft != null) for (const r of results) {
     if (r.fits && r.model.widthFt * r.model.lengthFt > capSqft + 1) { r.fits = false; r.method = null; r.overSize = true; }
   }
