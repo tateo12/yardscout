@@ -75,11 +75,13 @@ export const equityTier = (score) => (score >= 75 ? "hot" : score >= 50 ? "warm"
 // paid down), owner-occupancy, and value band, so the map still spreads hot/warm/cool instead of clustering all-warm.
 // A proxy, not tenure-proven -- still labeled "estimate" in the UI.
 export function leadScoreNoTenure({ marketValue, yearBuilt, occupancy } = {}) {
-  let s = occupancy === "owner-occupant" ? 45 : occupancy === "investor" ? 40 : 30;
+  // Selective: without tenure, "hot" is reserved for the strongest proxy of deep equity -- a genuinely old,
+  // owner-occupied, mid-value home. Most established homes land "warm"; new / luxury / recent absentee land "cool".
+  let s = occupancy === "owner-occupant" ? 32 : occupancy === "investor" ? 26 : 16;
   const yb = yearBuilt || 0;
-  s += yb <= 0 ? 10 : yb <= 1970 ? 30 : yb <= 1990 ? 22 : yb <= 2005 ? 12 : yb <= 2015 ? 4 : 0;
+  s += yb <= 0 ? 10 : yb <= 1965 ? 30 : yb <= 1985 ? 22 : yb <= 2005 ? 12 : yb <= 2015 ? 5 : 0;
   const v = marketValue || 0;
-  s += v <= 0 ? 6 : v < 200000 ? 6 : v <= 650000 ? 15 : v <= 900000 ? 8 : 2;
+  s += v <= 0 ? 8 : v < 150000 ? 4 : v <= 250000 ? 12 : v <= 650000 ? 18 : v <= 900000 ? 10 : 4;
   return Math.max(0, Math.min(100, Math.round(s)));
 }
 

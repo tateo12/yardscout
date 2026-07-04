@@ -148,7 +148,9 @@ const styleFor = (feat, _s) => {   // _s (settings) kept for call-site symmetry;
   // The map only ever speaks Ember: shade by equity-lead tier once we have owner data; a fitting lot that isn't
   // rated yet (data still loading / missing) gets a neutral graphite gray — never the old green/amber fit scale.
   const c = p._ownerTier ? EQ[p._ownerTier].color : PENDING_COLOR;
-  return { color: c, weight: 2, opacity: 1, fillColor: c, fillOpacity: 0.82 };  // border matches the inside
+  // lighter fill + solid border: reads as a clean highlight (you can still see the roof through it), and it keeps a
+  // slight parcel-vs-imagery offset from looking like a solid slab covering the wrong house.
+  return { color: c, weight: 2.5, opacity: 1, fillColor: c, fillOpacity: 0.42 };
 };
 const PENDING_COLOR = "#A7A092";  // fits, not yet rated (warm neutral, on-brand with the paper theme)
 // invisible fill so non-winners stay clickable (tap any house at a door) without cluttering the map
