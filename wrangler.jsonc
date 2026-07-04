@@ -1,0 +1,10 @@
+{
+  "name": "yardscout",
+  "compatibility_date": "2026-06-01",
+  // Static-assets-only Worker: serves the built SPA from app/dist.
+  // Build command produces app/dist; `npx wrangler deploy` uploads it.
+  "assets": {
+    "directory": "./app/dist",
+    "not_found_handling": "single-page-application"
+  }
+}
