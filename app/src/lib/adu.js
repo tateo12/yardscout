@@ -55,7 +55,7 @@ export const RULE_OPTIONS = {
 // ---- Per-jurisdiction rule registry (auto-applied by the parcel's city/county) ----
 // Bump when any profile below changes so the fit cache re-judges. Rules are VERIFIED per city, never guessed;
 // a city not listed here falls back to its county baseline and is flagged "unverified" in the UI.
-export const JURISDICTIONS_VERSION = "utah-slco-2026-07-04f";
+export const JURISDICTIONS_VERSION = "utah-slco-2026-07-04g";
 
 // Salt Lake County ordinance = the baseline for all unincorporated SLCo (Kearns + the metro townships).
 export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE };
@@ -90,7 +90,7 @@ const CITY_RULES = {
   "south jordan":     P("South Jordan",     { minLotSqft: 14520, sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 35, maxAduSqft: 1500 }),   // 35%/1,500 is a Planning-Commission REVIEW TRIGGER (vs "living area"), not a hard ban; kept as a soft cap for lead quality
   "draper":           P("Draper",           { minLotSqft: 12000, sideFt: 10, rearFt: 20, frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 0, capBasement: "included" }),   // R3 setbacks; "Total Floor Area" defined to INCLUDE basement -> no haircut
   "riverton":         P("Riverton",         { minLotSqft: 0,     sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 10, maxPctOfPrimary: 0,  maxAduSqft: 0 }),
-  "herriman":         P("Herriman",         { minLotSqft: 6000,  sideFt: 8,  rearFt: 10, frontBehindFacadeFt: 5,  maxPctOfPrimary: 50, maxAduSqft: 1000 }),   // detached legalized May 2026
+  "herriman":         P("Herriman",         { detachedAllowed: false }),   // CURRENTLY internal-ADU only ("an I-ADU may not be a detached structure"; no %/sqft cap, state-preempted). Prior 50% cap was a DATA ERROR (River Heights/Cache Co contamination). Detached pathway mid-adoption (PC draft Feb 2026: 1,000 sf/7,000 lot); SB284 forces detached on >=11k lots ~Oct 2026 (Herriman ~60k, in scope). Re-verify then.
   "bluffdale":        P("Bluffdale",        { minLotSqft: 0,     sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 0, capBasement: "included" }),   // BCC 11.340: 50% of SLCo Assessor "all floors" (= BLDG_SQFT, incl. finished basement) minus attached garage -> no haircut
   "midvale":          P("Midvale",          { minLotSqft: 6001,  sideFt: 2,  rearFt: 2,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),
   "cottonwood heights": P("Cottonwood Heights", { minLotSqft: 0, sideFt: 3,  rearFt: 3,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),   // conditional (R-1/RR-1/F-1)
