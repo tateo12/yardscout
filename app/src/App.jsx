@@ -882,19 +882,24 @@ export default function App({ profile, signOut } = {}) {
     if (top === "Utah County") return "Utah Valley";
     return top ? top.replace(/ County$/, "") : "Wasatch Front";
   }, [features]);
-  // house sqft (assessor finished area, incl. finished basement) + what the city's size cap works out to for THIS home
-  const selHouseSqft = sel?.BLDG_SQFT || 0;
-  const selEffCap = selJuris
-    ? aduSizeCap(selJuris.profile, selJuris.profile.capBasement === "included" ? selHouseSqft : selHouseSqft * PRIMARY_ABOVEGRADE_FACTOR)
-    : null;
-  const selEffCapLabel = !selJuris ? ""
-    : selEffCap != null ? `~${Math.round(selEffCap).toLocaleString()} sq ft`
-    : (selJuris.profile.maxPctOfPrimary > 0 && selHouseSqft <= 0) ? "needs home size"
-    : "no cap";
+  const selHouseSqft = sel?.BLDG_SQFT || 0;   // assessor finished area, incl. finished basement
   const selOwner = useMemo(() => {
     void ownerVer;   // re-read the ref when owner data lands (batch enrich or on-demand fetch)
     return selected != null ? freshOwner(ownerCacheRef.current, String(selected)) : null;
   }, [selected, ownerVer]);
+  // What the city's %-of-primary cap works out to for THIS home. Denominator: cities whose code counts the basement
+  // (capBasement:"included") use total sqft; otherwise prefer the owner record's EXACT above-grade sqft (one floor),
+  // falling back to a conservative haircut of total only when above-grade isn't loaded yet.
+  const selAboveGrade = selOwner?.aboveGradeSqft || 0;
+  const selCapDenom = !selJuris ? 0
+    : selJuris.profile.capBasement === "included" ? selHouseSqft
+    : selAboveGrade > 0 ? selAboveGrade
+    : selHouseSqft * PRIMARY_ABOVEGRADE_FACTOR;
+  const selEffCap = selJuris ? aduSizeCap(selJuris.profile, selCapDenom) : null;
+  const selEffCapLabel = !selJuris ? ""
+    : selEffCap != null ? `~${Math.round(selEffCap).toLocaleString()} sq ft`
+    : (selJuris.profile.maxPctOfPrimary > 0 && selCapDenom <= 0) ? "needs home size"
+    : "no cap";
 
   const TABS = [
     { key: "map", label: "Map" },
