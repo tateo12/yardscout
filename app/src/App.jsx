@@ -856,6 +856,15 @@ export default function App({ profile, signOut } = {}) {
   const fit = aduFit && aduFit._key === selected ? aduFit : null;   // only trust the fit result if it's for the CURRENT parcel
   const ruleCounty = sel?.COUNTY_NAME || (CITY_PROFILES.find((c) => c.key === settings.aduCity)?.name || "this county");
   const selJuris = sel ? resolveJurisdiction({ city: sel.PARCEL_CITY, county: sel.COUNTY_NAME, fallback: aduProfile }) : null;   // rules for THIS parcel's city
+  // header subtitle: name the area from the county most represented in the loaded parcels (not hardcoded)
+  const areaLabel = useMemo(() => {
+    const counts = {};
+    for (const f of features) { const c = f?.properties?.COUNTY_NAME; if (c) counts[c] = (counts[c] || 0) + 1; }
+    const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (top === "Salt Lake County") return "Salt Lake Valley";
+    if (top === "Utah County") return "Utah Valley";
+    return top ? top.replace(/ County$/, "") : "Wasatch Front";
+  }, [features]);
   // house sqft (assessor finished area, incl. finished basement) + what the city's size cap works out to for THIS home
   const selHouseSqft = sel?.BLDG_SQFT || 0;
   const selEffCap = selJuris
@@ -886,7 +895,7 @@ export default function App({ profile, signOut } = {}) {
       </div>
       <header className="top">
         <Logo />
-        <div className="title"><b>Yardscout</b><small>Salt Lake Valley</small></div>
+        <div className="title"><b>Yardscout</b><small>{areaLabel}</small></div>
         {loading && <span className="loadtag"><span className="spin sm" />loading</span>}
         <div className="cov">
           <span className="num">{customers.length}</span><span className="lab">cust</span>
