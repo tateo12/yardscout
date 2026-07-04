@@ -55,7 +55,7 @@ export const RULE_OPTIONS = {
 // ---- Per-jurisdiction rule registry (auto-applied by the parcel's city/county) ----
 // Bump when any profile below changes so the fit cache re-judges. Rules are VERIFIED per city, never guessed;
 // a city not listed here falls back to its county baseline and is flagged "unverified" in the UI.
-export const JURISDICTIONS_VERSION = "utah-slco-2026-07-04a";
+export const JURISDICTIONS_VERSION = "utah-slco-2026-07-04b";
 
 // Salt Lake County ordinance = the baseline for all unincorporated SLCo (Kearns + the metro townships).
 export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE };
@@ -63,7 +63,7 @@ export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE };
 // city name (as it appears in PARCEL_CITY, lowercased) -> { profile, verified }.
 // Seeded with the unincorporated metro townships, which are genuinely governed by the county code (verified).
 // Incorporated cities (Salt Lake City, Murray, West Valley, ...) each set their own code — add them here as verified.
-const UNINCORPORATED_SLCO = ["magna", "white city", "copperton", "emigration canyon", "magna metro township"];   // Kearns split out (own ordinance) -> CITY_RULES
+const UNINCORPORATED_SLCO = ["magna", "white city", "emigration canyon", "magna metro township"];   // Kearns + Copperton split out (own ordinances) -> CITY_RULES
 
 // Per-city detached-ADU rules from municipal code (researched 2026-07, cited). Spread over the county baseline;
 // override only confirmed fields. detachedAllowed:false = detached units banned (hard no-go). frontBehindFacadeFt 0
@@ -80,25 +80,26 @@ const CITY_RULES = {
   "salt lake city":   P("Salt Lake City",   { minLotSqft: 0,      sideFt: 3,  rearFt: 3,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1000 }),
   "murray":           P("Murray",           { minLotSqft: 10000,  sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 1000 }),
   "millcreek":        P("Millcreek",        { minLotSqft: 8000,   sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1000 }),
-  "south salt lake":  P("South Salt Lake",  { minLotSqft: 6000,   sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 1000 }),
+  "south salt lake":  P("South Salt Lake",  { minLotSqft: 6000,   sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 10, maxPctOfPrimary: 50, maxAduSqft: 1000 }),
   "west jordan":      P("West Jordan",      { minLotSqft: 10000,  sideFt: 6,  rearFt: 6,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),
   "west valley city": P("West Valley City", { detachedAllowed: false }),   // detached banned (internal only)
   "taylorsville":     P("Taylorsville",     { detachedAllowed: false }),   // detached banned (internal only)
   "south jordan":     P("South Jordan",     { minLotSqft: 14520, sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 35, maxAduSqft: 1500 }),   // conditional, zone-limited
-  "draper":           P("Draper",           { minLotSqft: 12000, frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 0 }),   // setbacks zone-dependent -> baseline
+  "draper":           P("Draper",           { minLotSqft: 12000, sideFt: 10, rearFt: 20, frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 0 }),   // R3 representative setbacks
   "riverton":         P("Riverton",         { minLotSqft: 0,     sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 10, maxPctOfPrimary: 0,  maxAduSqft: 0 }),
   "herriman":         P("Herriman",         { minLotSqft: 6000,  sideFt: 8,  rearFt: 10, frontBehindFacadeFt: 5,  maxPctOfPrimary: 50, maxAduSqft: 1000 }),   // detached legalized May 2026
-  "bluffdale":        P("Bluffdale",        { minLotSqft: 0,     frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 0 }),   // setbacks zone-dependent -> baseline
+  "bluffdale":        P("Bluffdale",        { minLotSqft: 0,     sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 0 }),   // R-1-10 representative setbacks
   "midvale":          P("Midvale",          { minLotSqft: 6001,  sideFt: 2,  rearFt: 2,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),
   "cottonwood heights": P("Cottonwood Heights", { minLotSqft: 0, sideFt: 3,  rearFt: 3,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),   // conditional (R-1/RR-1/F-1)
   "holladay":         P("Holladay",         { minLotSqft: 10000, sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),
   "sandy":            P("Sandy",            { detachedAllowed: false }),
-  "brighton":         P("Brighton",         { detachedAllowed: false }),   // detached banned town-wide (own Title 19)   // detached banned today (internal-only)
-  // NOTE: Utah Code 10-9a-530 (primary law) mandates INTERNAL ADUs only — NO confirmed statute forcing DETACHED.
-  // A reported 2025-26 "SB284 detached mandate (>=11,000 sqft lots, Oct 2026)" surfaced only from secondary/blog
-  // sources and was NOT verified in enrolled text. Treat detached as fully LOCAL discretion; these bans are current
-  // law. Re-check the detachedAllowed:false cities (Sandy, West Valley, Taylorsville, Orem, Highland, Saratoga Springs)
-  // periodically in case a real mandate is enacted.
+  "brighton":         P("Brighton",         { detachedAllowed: false }),   // detached banned town-wide (own Title 19)
+  "copperton":        P("Copperton",        { minLotSqft: 6000,  sideFt: 5,  rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),   // own Title 19 (no cap, no front offset)   // detached banned today (internal-only)
+  // NOTE (SB284, ENACTED — enrolled bill le.utah.gov/Session/2026/bills/enrolled/SB0284.pdf): eff ~Oct 2026, cities
+  // pop >=5,000 must PERMIT detached ADUs on single-family lots >=11,000 sqft (smaller lots + setbacks/size stay local).
+  // So after Oct 2026 the >=5,000 banned cities (Sandy, West Valley, Taylorsville, Orem, Highland, Saratoga Springs)
+  // must allow detached on >=11,000 sqft lots. Brighton/Alta/Copperton (<5,000 pop) are EXEMPT — their bans stand.
+  // Bans below are CURRENT (pre-Oct-2026) law; revisit after the effective date.
   // ---- Utah County ----
   "lehi":             P("Lehi",             { minLotSqft: 14520,  sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1300 }),
   "eagle mountain":   P("Eagle Mountain",   { minLotSqft: 8000,   sideFt: 10, rearFt: 25, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1200 }),  // setbacks zone-dependent (representative)
@@ -121,6 +122,7 @@ const CITY_RULES = {
   "fairfield":        P("Fairfield",        { minLotSqft: 43560,  sideFt: 15, rearFt: 40, frontBehindFacadeFt: 0,  maxPctOfPrimary: 35, maxAduSqft: 900 }),   // rural, 1-acre min
   "genola":           P("Genola",           { detachedAllowed: false }),   // detached banned (internal only)
   "goshen":           P("Goshen",           { detachedAllowed: false }),   // detached banned (internal only)
+  "payson":           P("Payson",           { minLotSqft: 6000,  sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1200 }),   // detached legalized Feb 2024 (§13.20.221)
 };
 export const JURISDICTIONS = Object.fromEntries([
   ...UNINCORPORATED_SLCO.map((c) => [c, { profile: KEARNS_PROFILE, verified: true }]),
