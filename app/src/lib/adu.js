@@ -55,7 +55,7 @@ export const RULE_OPTIONS = {
 // ---- Per-jurisdiction rule registry (auto-applied by the parcel's city/county) ----
 // Bump when any profile below changes so the fit cache re-judges. Rules are VERIFIED per city, never guessed;
 // a city not listed here falls back to its county baseline and is flagged "unverified" in the UI.
-export const JURISDICTIONS_VERSION = "utah-slco-2026-07-04b";
+export const JURISDICTIONS_VERSION = "utah-slco-2026-07-04c";
 
 // Salt Lake County ordinance = the baseline for all unincorporated SLCo (Kearns + the metro townships).
 export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE };
@@ -72,11 +72,14 @@ const UNINCORPORATED_SLCO = ["magna", "white city", "emigration canyon", "magna 
 const P = (name, o = {}) => ({ ...KEARNS_PROFILE, name, ...o });
 const CITY_RULES = {
   // ---- Salt Lake County ----
-  // Kearns metro township — its OWN ordinance (Ord. 2020-8-2), min lot 5,000. NOTE: code also states a 40%-of-primary
-  // cap; HELD OUT (maxPctOfPrimary:0) pending verbatim verification because 40% of a ~900sf home = ~360sf would exclude
-  // every unit — needs confirming it applies to detached before we tell reps Kearns is size-blocked. 1,000 sqft ceiling applied.
-  "kearns":           P("Kearns",           { minLotSqft: 5000,  sideFt: 5,  rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1000 }),
-  "kearns metro township": P("Kearns",      { minLotSqft: 5000,  sideFt: 5,  rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1000 }),
+  // Kearns metro township — its OWN ordinance (Ord. 2020-8-2, Ch. 19.15). Min lot 5,000. §19.15.060 VERBATIM-CONFIRMED
+  // (adu-slco-a): ADU floor area must be LESS THAN 40% of the primary residence AND never exceed 1,000 sqft — whichever
+  // is less — and applies to DETACHED units (chapter's defined ADU covers "detached building"). No size floor, no
+  // exception/variance. BUSINESS IMPACT: on a ~900 sqft primary, 40% ≈ 360 sqft blocks every manufactured unit (533+).
+  // Denominator "square footage of primary" is undefined in code (footprint vs finished floor unconfirmed). SB284 may
+  // preempt this for detached on lots >=11,000 sqft after Oct 2026, but most Kearns lots are 5-7k so it won't help them.
+  "kearns":           P("Kearns",           { minLotSqft: 5000,  sideFt: 5,  rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 40, maxAduSqft: 1000 }),
+  "kearns metro township": P("Kearns",      { minLotSqft: 5000,  sideFt: 5,  rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 40, maxAduSqft: 1000 }),
   "salt lake city":   P("Salt Lake City",   { minLotSqft: 0,      sideFt: 3,  rearFt: 3,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1000 }),
   "murray":           P("Murray",           { minLotSqft: 10000,  sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 50, maxAduSqft: 1000 }),
   "millcreek":        P("Millcreek",        { minLotSqft: 8000,   sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 1000 }),
@@ -94,6 +97,7 @@ const CITY_RULES = {
   "holladay":         P("Holladay",         { minLotSqft: 10000, sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),
   "sandy":            P("Sandy",            { detachedAllowed: false }),
   "brighton":         P("Brighton",         { detachedAllowed: false }),   // detached banned town-wide (own Title 19)
+  "alta":             P("Alta",             { detachedAllowed: false }),   // no ADU category exists anywhere in code (prohibitory-by-default); SB284 exempts (pop 228)
   "copperton":        P("Copperton",        { minLotSqft: 6000,  sideFt: 5,  rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),   // own Title 19 (no cap, no front offset)   // detached banned today (internal-only)
   // NOTE (SB284, ENACTED — enrolled bill le.utah.gov/Session/2026/bills/enrolled/SB0284.pdf): eff ~Oct 2026, cities
   // pop >=5,000 must PERMIT detached ADUs on single-family lots >=11,000 sqft (smaller lots + setbacks/size stay local).
@@ -109,6 +113,8 @@ const CITY_RULES = {
   "alpine":           P("Alpine",           { minLotSqft: 217800, sideFt: 12, rearFt: 12, frontBehindFacadeFt: 30, maxPctOfPrimary: 0, maxAduSqft: 0 }),   // detached only as conditional guest house, 5-acre min
   "highland":         P("Highland",         { detachedAllowed: false }),   // detached banned (internal/attached only)
   "saratoga springs": P("Saratoga Springs", { detachedAllowed: false }),   // detached banned (internal only)
+  "american fork":    P("American Fork",    { detachedAllowed: false }),   // detached NOT permitted today — internal accessory apartment only (§17.12.201(9) "within a one-family dwelling")
+  "cedar hills":      P("Cedar Hills",      { minLotSqft: 11000, sideFt: 5,  rearFt: 5,  frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),   // R-1-11,000; detached allowed via CUP (10-2-1/10-4A), no size cap; SB284 removes the CUP after Oct 2026
   // ---- Utah County (south) ----
   "provo":            P("Provo",            { minLotSqft: 0,      sideFt: 10, rearFt: 10, frontBehindFacadeFt: 0,  maxPctOfPrimary: 0,  maxAduSqft: 0 }),
   "orem":             P("Orem",             { detachedAllowed: false }),   // detached banned (internal only)
