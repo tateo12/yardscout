@@ -76,8 +76,8 @@ Businesses bring their own canvassers and pay per seat. Lean, recurring, keeps u
 
 Rationale: one extra placement ($5k-20k) makes $89 a rounding error; the fit-map + owner-scoring combo has no direct competitor in the ADU niche, justifying a premium over a plain canvassing app or a static lead list.
 
-### Add-on: canvassing-as-a-done-for-you service
-For dealers who won't staff a field team, offer managed canvassing on top of the software. Higher revenue per account, but it introduces labor ops - offer it as an *add-on*, not the core, until demand is proven. (This is the controlled version of "I supply the canvassers.")
+### Explicitly NOT doing: managed canvassing / in-field labor
+Founder decision (2026-07-04): Yardscout stays a software + data company. We do **not** supply canvassers or run field teams. Managed canvassing looks like more revenue but turns the company into a recruiting/scheduling/labor-management operation - the exact people-heavy, off-desk business the founder is deliberately avoiding. Dealers own the feet on the street; we own the software. This constraint is a feature, not a limitation.
 
 ### Secondary / later
 - **Filtered lead-list export** as a standalone product - sell the list (viable + owner-occupied + long-tenure) to businesses that don't want the whole app. Revenue without seats.
@@ -86,8 +86,8 @@ For dealers who won't staff a field team, offer managed canvassing on top of the
 - **Matchmaking marketplace** (your idea) - connect ADU dealers with investors/property managers who want to add doors. Genuinely good, but it is a two-sided marketplace that only works once there's supply on both sides. Park as a phase-3 retention feature, not an acquisition play.
 - **Government license** - municipal ADU-capacity tool. Long cycle; later.
 
-### Model tension to hold consciously
-**SaaS (lean, software) vs marketplace/labor (more revenue, becomes an ops business).** Recommendation: stay software + data as long as possible; let dealers own the feet on the street. Add managed canvassing only where a paying dealer asks for it.
+### Operating philosophy
+Lean, bootstrapped, mostly-solo micro-SaaS run from the founder's desk. AI (Codex/Claude) is the engineering leverage; the product does not need a handwritten codebase or a human code-reviewer to be sellable. Deliberately few, higher-value customers over a large low-value base, because the real constraint in this model is the founder's *time* (support, sales, maintenance), not code. Grow by automating support and raising price/value, not by adding headcount.
 
 ---
 
@@ -171,15 +171,15 @@ The rules are the risky asset (legal accuracy, constant change). Trust is built 
 - **Can build (vibe-code)** - ships working product fast, iterates on real feedback.
 - **Thinks outside the box** - the "it's a feasibility engine, not an ADU CRM" reframe is exactly this.
 
-### Where a partner is actually needed
-The right partner depends on which model wins, but the consistent gaps are:
+### Do you need a partner? Probably not to start.
+Founder direction (2026-07-04): stay lean and mostly solo; AI-assisted code is fine; do not want a people-heavy business. Under that model:
 
-1. **Production/data engineering (most likely need if staying SaaS).** Vibe-coding is great for prototypes and demos; a multi-tenant SaaS that paying dealers depend on needs reliability, auth/security done right, data-pipeline robustness (GIS layers change, assessor endpoints move), billing that doesn't drop payments, and uptime. A partner who can *harden and own the backend* frees the founder to sell and design. **This is the highest-leverage hire/partner for the SaaS path.**
-2. **Field operations (needed only if you go the managed-canvassing / marketplace route).** Recruiting, training, scheduling, and managing canvasser labor is a whole discipline and not a founder strength. If you decide to supply canvassers, you need an ops partner - and that changes the company from software to services. Decide the model *before* taking this partner, because it commits you to the labor business.
-3. **Not partner-level, get as advisors instead:** land-use/permitting expertise (for rule accuracy + the attorney-review credential), and finance/bizops. These are advisory, not equity co-founder needs, at this stage.
+- **A human code-reviewer is not needed.** Codex/Claude catch correctness; the codebase does not need to be handwritten to be sellable. This is settled.
+- **What actually needs owning later is operational reliability, not code quality.** Once paying dealers depend on uptime, someone has to own the "it broke at 2am / a data endpoint moved / a payment silently failed" problem. AI review does not do that. But this is a *later* need (post first paying customers) and is fillable by a **fractional / on-call contractor**, not necessarily a co-founder. Good tests, monitoring, and docs reduce even that need - and, usefully, they are what let the founder *not* be interrupted, which serves the work-from-home goal.
+- **Field operations: not needed at all**, because managed canvassing is off the table by choice (see §5).
+- **Permitting/land-use and finance: advisors, not partners.**
 
-### Recommendation
-If you stay software-first (recommended), the partner you most need is a **technical co-founder / senior engineer to own production**, not a field-ops person. Bring an ops partner only if and when you deliberately choose the managed-canvassing model. Keep permitting and finance as advisors. Guard equity: your sales + product-vision role is the hard-to-replace one; a hardening engineer is high-value but more replaceable than a true co-founder, so structure accordingly.
+**Bottom line:** the founder's sell + build-fast combo already covers the two scarcest jobs. Get to first sales solo and AI-assisted. Add a fractional engineer for reliability only when real customers make uptime a real cost. A true equity co-founder is optional and probably premature; guard equity accordingly.
 
 ---
 
