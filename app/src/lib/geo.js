@@ -1,7 +1,7 @@
 // Live geodata for the ADU fit engine: parcels, existing-house footprints, street direction.
 // All three layers are free UGRC ArcGIS services on the same org (open CORS). Works in browser + node (global fetch).
 import { area as turfArea, convex as turfConvex, booleanPointInPolygon, centroid as turfCentroid, nearestPointOnLine, point, polygon as turfPolygon, lineString } from "@turf/turf";
-import { makeFrame, ringToLocal, buildZone, fitModel, fitScore, scoreToColor, aduSizeCap } from "./fit.js";
+import { makeFrame, ringToLocal, buildZone, fitModel, fitScore, scoreToColor, aduSizeCap, PRIMARY_ABOVEGRADE_FACTOR } from "./fit.js";
 
 const SQFT_PER_M2 = 10.7639104;
 
@@ -143,8 +143,10 @@ export function fitParcelWith(parcel, buildings, roads, { models, profile, overl
     return { status: "needs-check", reason: "home_size_unknown", ...base };
   }
   const results = models.map((m) => ({ model: m, ...fitModel({ zone: z.zone, constraints: z.constraints, house: houseLocal, model: m, overlay }) }));
-  // per-city ADU size cap (floor area): hard-exclude units too big for this home. Kearns = uncapped (no effect).
-  const capSqft = aduSizeCap(profile, parcel.properties?.BLDG_SQFT || 0);
+  // per-city ADU size cap (floor area): hard-exclude units too big for this home. BLDG_SQFT counts finished basement,
+  // so for the %-of-primary branch we haircut to the conservative above-grade estimate (see PRIMARY_ABOVEGRADE_FACTOR).
+  const primaryConservative = (parcel.properties?.BLDG_SQFT || 0) * PRIMARY_ABOVEGRADE_FACTOR;
+  const capSqft = aduSizeCap(profile, primaryConservative);
   if (capSqft != null) for (const r of results) {
     if (r.fits && r.model.widthFt * r.model.lengthFt > capSqft + 1) { r.fits = false; r.method = null; r.overSize = true; }
   }

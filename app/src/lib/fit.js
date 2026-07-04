@@ -229,8 +229,18 @@ function sideGapFt(best, constraints, w) {
 }
 
 // ---------- per-city ADU size cap ----------
+// CONSERVATIVE denominator for %-of-primary caps. UGRC BLDG_SQFT counts "finished above AND below grade area"
+// (basement included). Cities that cap the ADU at a % of "the primary residence" leave "square footage" undefined,
+// and the strict/legal reading is main-floor-only (basement excluded) — see Kearns §19.15.060. We can't split
+// basement from above-grade per home, so we haircut the reported area to the above-grade portion before applying the
+// %. 0.5 = assume up to half the finished area is (possibly non-counting) basement — a rambler-worst-case. This makes
+// the %-cap fail closed: only homes whose reported area is large enough to clear the cap even after the haircut pass.
+// Better to skip a borderline house than send a rep to one the city's 40%/50% rule would block. Dial, not law.
+export const PRIMARY_ABOVEGRADE_FACTOR = 0.5;
+
 // Max allowed ADU floor area (sq ft) for a home, from the jurisdiction profile. null = uncapped.
 // maxPctOfPrimary is a % of the primary home's sq ft; maxAduSqft is an absolute ceiling. The tighter wins.
+// primarySqft should already be the CONSERVATIVE above-grade estimate (caller applies PRIMARY_ABOVEGRADE_FACTOR).
 export function aduSizeCap({ maxPctOfPrimary, maxAduSqft } = {}, primarySqft = 0) {
   const caps = [];
   if (maxPctOfPrimary && primarySqft > 0) caps.push((maxPctOfPrimary / 100) * primarySqft);
