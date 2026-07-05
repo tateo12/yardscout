@@ -91,6 +91,9 @@ const TILES = {
   satellite: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
   streets: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
 };
+// USGS imagery is only cached to z16 (404s above) -> cap maxNativeZoom so Leaflet upscales the z16 tile past that
+// instead of requesting blank tiles. Esri streets cache to ~19. maxZoom 20 keeps the map zoomable either way.
+const tileOpts = (style) => ({ maxZoom: 20, minZoom: 3, maxNativeZoom: style === "streets" ? 19 : 16 });
 
 const UA = typeof navigator !== "undefined" ? navigator.userAgent : "";
 const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (typeof navigator !== "undefined" && navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -617,7 +620,7 @@ export default function App({ profile, signOut } = {}) {
     const home = lastView || settingsRef.current.home || { lat: 40.6655, lng: -111.9925, zoom: 16 };
     const map = L.map("map", { preferCanvas: true, zoomControl: true, attributionControl: false }).setView([home.lat, home.lng], home.zoom);
     mapRef.current = map;
-    baseLayerRef.current = L.tileLayer(TILES[settingsRef.current.mapStyle] || TILES.satellite, { maxZoom: 20 }).addTo(map);
+    baseLayerRef.current = L.tileLayer(TILES[settingsRef.current.mapStyle] || TILES.satellite, tileOpts(settingsRef.current.mapStyle)).addTo(map);
     const resizeFlags = () => {
       const h = sizeForZoom(map.getZoom());
       Object.entries(markerByKey.current).forEach(([key, mk]) => {
@@ -701,7 +704,7 @@ export default function App({ profile, signOut } = {}) {
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
     if (baseLayerRef.current) map.removeLayer(baseLayerRef.current);
-    baseLayerRef.current = L.tileLayer(TILES[settings.mapStyle] || TILES.satellite, { maxZoom: 20 }).addTo(map);
+    baseLayerRef.current = L.tileLayer(TILES[settings.mapStyle] || TILES.satellite, tileOpts(settings.mapStyle)).addTo(map);
   }, [settings.mapStyle]);
 
   // ADU rules come from Settings (fall back to the shipped Kearns config)
