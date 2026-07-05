@@ -12,6 +12,11 @@ function mercatorBbox(lat, lng, realHalf) {
 function esriExport(bbox, size) {
   return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox.join(",")}&bboxSR=3857&imageSR=3857&size=${size},${size}&format=jpg&f=image`;
 }
+// USGS National Map imagery export: resamples from its cache, so (unlike Esri) it returns an image even at the
+// small/zoomed bboxes of a single small lot. Keyless, CORS *. Used as the ground fallback when Esri export 500s.
+function usgsExport(bbox, size) {
+  return `https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/export?bbox=${bbox.join(",")}&bboxSR=3857&imageSR=3857&size=${size},${size}&format=jpg&f=image`;
+}
 
 // Full-screen per-parcel 3D scene: the trailer at real scale on that lot's satellite ground.
 export default function Parcel3D({ center, groundMeters, ring, modelUrl, dims, place, label, onClose }) {
@@ -60,10 +65,13 @@ export default function Parcel3D({ center, groundMeters, ring, modelUrl, dims, p
       sun.shadow.camera.near = 0.5; sun.shadow.camera.far = d * 5;
       scene.add(sun);
 
-      // satellite ground
+      // satellite ground: Esri is sharp but its export 500s on small (zoomed-in) bboxes -- common for small lots.
+      // Fall back to USGS export (resamples, so it returns an image at any zoom) so the ground is never blank.
       const bbox = mercatorBbox(center.lat, center.lng, groundMeters / 2);
+      const loader = new THREE.TextureLoader().setCrossOrigin("anonymous");
       const tex = await new Promise((res) => {
-        new THREE.TextureLoader().setCrossOrigin("anonymous").load(esriExport(bbox, 1024), res, undefined, () => res(null));
+        loader.load(esriExport(bbox, 1024), res, undefined,
+          () => loader.load(usgsExport(bbox, 1024), res, undefined, () => res(null)));
       });
       if (tex) tex.colorSpace = THREE.SRGBColorSpace;
       const ground = new THREE.Mesh(
