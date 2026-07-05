@@ -878,11 +878,12 @@ export default function App({ profile, signOut } = {}) {
   );
 
   const stats = useMemo(() => {
-    const tiers = { green: 0, yellow: 0, red: 0 };
-    features.forEach((p) => (tiers[p._tier] += 1));
     const tally = Object.fromEntries(OUTCOMES.map((o) => [o.key, 0]));
     Object.values(knocks).forEach((k) => k.outcome && OUT[k.outcome] && (tally[k.outcome] += 1));
-    return { tiers, tally, totalKnocks: Object.values(knocks).filter((k) => k.outcome && OUT[k.outcome]).length };
+    const totalKnocks = Object.values(knocks).filter((k) => k.outcome && OUT[k.outcome]).length;
+    const answered = totalKnocks - (tally.not_home || 0);   // doors where someone actually answered
+    const bookedRate = answered ? Math.round((tally.booked / answered) * 100) : 0;
+    return { tally, totalKnocks, answered, bookedRate };
   }, [features, knocks]);
 
   const sel = selected != null ? features.find((p) => p._key === selected) : null;
@@ -1103,13 +1104,14 @@ export default function App({ profile, signOut } = {}) {
         {tab === "stats" && (
           <section className="panel padded">
             <div className="swrap">
-            <div className="phd">In current view</div>
+            <div className="phd">Your pipeline</div>
             <div className="readouts">
-              <div className="ro"><b style={{ color: TIER.green.color }}>{stats.tiers.green}</b><span>Room</span></div>
-              <div className="ro"><b style={{ color: TIER.yellow.color }}>{stats.tiers.yellow}</b><span>Tight</span></div>
-              <div className="ro"><b style={{ color: TIER.red.color }}>{stats.tiers.red}</b><span>No room</span></div>
+              <div className="ro"><b style={{ color: OUT.booked.color }}>{stats.tally.booked || 0}</b><span>Booked</span></div>
+              <div className="ro"><b style={{ color: OUT.interested.color }}>{stats.tally.interested || 0}</b><span>Interested</span></div>
+              <div className="ro"><b style={{ color: OUT.not_home.color }}>{stats.tally.not_home || 0}</b><span>Follow up</span></div>
             </div>
-            <div className="phd">Knocks logged</div>
+            <p className="note">{stats.totalKnocks} {stats.totalKnocks === 1 ? "door" : "doors"} knocked · {stats.answered} answered · {stats.bookedRate}% booked</p>
+            <div className="phd">All outcomes</div>
             <div className="bars">
               {OUTCOMES.map((o) => {
                 const v = stats.tally[o.key] || 0;
@@ -1123,7 +1125,6 @@ export default function App({ profile, signOut } = {}) {
                 );
               })}
             </div>
-            <p className="note">Verdicts use lot size and open space from county records. The deeper back-it-in vs. crane access scoring comes from the building-footprint pass.</p>
             </div>
           </section>
         )}
@@ -1132,6 +1133,7 @@ export default function App({ profile, signOut } = {}) {
           <section className="panel padded">
             <div className="swrap sell">
               <div className="phd">Add a home to the backyard</div>
+              <p className="sellp addrnote">🏠 The backyard home gets its <b>own address</b> — it can be rented out or sold as a separate property.</p>
               {sel ? (
                 <div className="sellcard">
                   <div className="sellhd">For {sel.PARCEL_ADD || "this home"}</div>
