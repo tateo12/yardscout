@@ -1104,27 +1104,44 @@ export default function App({ profile, signOut } = {}) {
         {tab === "stats" && (
           <section className="panel padded">
             <div className="swrap">
-            <div className="phd">Your pipeline</div>
-            <div className="readouts">
-              <div className="ro"><b style={{ color: OUT.booked.color }}>{stats.tally.booked || 0}</b><span>Booked</span></div>
-              <div className="ro"><b style={{ color: OUT.interested.color }}>{stats.tally.interested || 0}</b><span>Interested</span></div>
-              <div className="ro"><b style={{ color: OUT.not_home.color }}>{stats.tally.not_home || 0}</b><span>Follow up</span></div>
-            </div>
-            <p className="note">{stats.totalKnocks} {stats.totalKnocks === 1 ? "door" : "doors"} knocked · {stats.answered} answered · {stats.bookedRate}% booked</p>
-            <div className="phd">All outcomes</div>
-            <div className="bars">
-              {OUTCOMES.map((o) => {
-                const v = stats.tally[o.key] || 0;
-                const max = Math.max(1, ...OUTCOMES.map((x) => stats.tally[x.key] || 0));
-                return (
-                  <div className="bar" key={o.key}>
-                    <span className="blab">{o.label}</span>
-                    <span className="track"><span className="fill" style={{ width: `${(v / max) * 100}%`, background: o.color }} /></span>
-                    <span className="bnum">{v}</span>
-                  </div>
-                );
-              })}
-            </div>
+            {stats.totalKnocks === 0 ? (
+              <div className="statsempty">
+                <div className="statsempty-icon">📊</div>
+                <b>No knocks logged yet</b>
+                <p>Work a neighborhood on the Map and log each door — Booked, Interested, Not home. Your pipeline and conversion show up here.</p>
+              </div>
+            ) : (
+              <>
+                <div className="statshero">
+                  <span className="sh-num">{stats.bookedRate}<i>%</i></span>
+                  <span className="sh-lab">booked of answered doors</span>
+                </div>
+                <div className="kpis">
+                  <div className="kpi"><b>{stats.totalKnocks}</b><span>Knocked</span></div>
+                  <div className="kpi"><b>{stats.answered}</b><span>Answered</span></div>
+                  <div className="kpi"><b style={{ color: OUT.booked.color }}>{stats.tally.booked || 0}</b><span>Booked</span></div>
+                  <div className="kpi"><b style={{ color: OUT.interested.color }}>{stats.tally.interested || 0}</b><span>Interested</span></div>
+                </div>
+                <div className="phd">Funnel</div>
+                <div className="funnel">
+                  {[
+                    { label: "Knocked", v: stats.totalKnocks, c: "var(--ink)" },
+                    { label: "Answered", v: stats.answered, c: OUT.not_home.color },
+                    { label: "Interested", v: (stats.tally.interested || 0) + (stats.tally.booked || 0), c: OUT.interested.color },
+                    { label: "Booked", v: stats.tally.booked || 0, c: OUT.booked.color },
+                  ].map((s) => (
+                    <div className="fstage" key={s.label}>
+                      <span className="flab">{s.label}</span>
+                      <span className="fbar"><span className="ffill" style={{ width: `${Math.max(3, (s.v / stats.totalKnocks) * 100)}%`, background: s.c }} /></span>
+                      <span className="fnum">{s.v}</span>
+                    </div>
+                  ))}
+                </div>
+                {(stats.tally.not_home || 0) > 0 && (
+                  <p className="note">🔁 {stats.tally.not_home} {stats.tally.not_home === 1 ? "door" : "doors"} to revisit (not home).</p>
+                )}
+              </>
+            )}
             </div>
           </section>
         )}
