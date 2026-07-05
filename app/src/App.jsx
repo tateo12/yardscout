@@ -397,10 +397,17 @@ export default function App({ profile, signOut } = {}) {
     URL.revokeObjectURL(url);
   };
 
-  const renderParcels = useCallback((rawFeatures) => {
+  const renderParcels = useCallback((rawFeaturesIn) => {
     const map = mapRef.current;
     if (layerRef.current) { map.removeLayer(layerRef.current); layerRef.current = null; }
     idToLayer.current = {};
+    // dedup by parcel id: pagination / the two county layers can return the same parcel twice -> drawing it twice
+    // stacks outlines and reads as "overlapping" lines. Keep the first occurrence.
+    const seen = new Set();
+    const rawFeatures = rawFeaturesIn.filter((f) => {
+      const id = String(f.properties?.PARCEL_ID || f.properties?.OBJECTID);
+      if (seen.has(id)) return false; seen.add(id); return true;
+    });
     rawFeatures.forEach((f) => {
       const p = f.properties;
       p._key = String(p.PARCEL_ID || p.OBJECTID);
