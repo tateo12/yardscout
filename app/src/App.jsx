@@ -22,7 +22,8 @@ const PARCEL_LAYERS = [
 const SQFT_PER_ACRE = 43560;
 const BACKYARD_FRAC = 0.5;
 const MIN_ZOOM = 15;       // below this a viewport holds more parcels than the page budget can fully cover
-const FIT_ZOOM = 17;       // at/above this (block level) the map switches to the exact geometry-driven fit color
+const FIT_ZOOM = 16;       // at/above this (default browse zoom) the map runs + trusts the exact geometry fit, not the coarse open-space estimate
+let AT_FIT_ZOOM = false;    // set from the live map zoom; when true, only an EXACT-confirmed fit gets a lead color (see styleFor)
 const PAGE = 2000;         // ArcGIS per-request cap; we paginate to cover the whole viewport
 const MAX_PAGES = 4;       // up to 8000 parcels per view before we ask the user to zoom in
 const SET_KEY = "yardscout.settings.v1";
@@ -143,7 +144,10 @@ function scoreOf(props) {
 const styleFor = (feat, _s) => {   // _s (settings) kept for call-site symmetry; not needed now that color = tier only
   const p = feat.properties;
   // Only the lots that WORK are highlighted; everything else is plain satellite (still tappable).
-  const winner = p._fitStatus ? p._fitStatus === "fits" : p._tier === "green";
+  // At browse zoom (AT_FIT_ZOOM) a lot is only a "winner" once the EXACT fit confirms it fits -- never on the coarse
+  // open-space estimate -- so the map can't promise a fit the tap then retracts. Coarse tier only drives the zoomed-out
+  // overview. A lot awaiting its exact result at browse zoom stays hidden until computeFits fills it in.
+  const winner = p._fitStatus ? p._fitStatus === "fits" : (!AT_FIT_ZOOM && p._tier === "green");
   if (!winner) return HIDDEN_STYLE;
   // The map only ever speaks Ember: shade by equity-lead tier once we have owner data; a fitting lot that isn't
   // rated yet (data still loading / missing) gets a neutral graphite gray — never the old green/amber fit scale.
@@ -555,6 +559,7 @@ export default function App({ profile, signOut } = {}) {
   const loadViewport = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
+    AT_FIT_ZOOM = map.getZoom() >= FIT_ZOOM;   // at browse zoom, styleFor trusts only the EXACT fit, not the coarse estimate
     if (map.getZoom() < MIN_ZOOM) {
       if (layerRef.current) { map.removeLayer(layerRef.current); layerRef.current = null; }
       setFeatures([]); setZoomedOut(true); setLoading(false);
