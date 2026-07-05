@@ -86,7 +86,9 @@ const ownerDisplay = (s) => String(s || "").split(";")[0]
 const fmtAsOf = (ts) => { try { return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); } catch { return "recently"; } };
 
 const TILES = {
-  satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  // USGS National Map orthoimagery (NAIP-based, keyless, CORS *). Chosen over Esri World Imagery because it's the same
+  // source Utah's parcel fabric is digitized against, so property lines sit on the roofs instead of ~10-30 ft off.
+  satellite: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
   streets: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
 };
 
