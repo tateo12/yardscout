@@ -86,14 +86,12 @@ const ownerDisplay = (s) => String(s || "").split(";")[0]
 const fmtAsOf = (ts) => { try { return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); } catch { return "recently"; } };
 
 const TILES = {
-  // USGS National Map orthoimagery (NAIP-based, keyless, CORS *). Chosen over Esri World Imagery because it's the same
-  // source Utah's parcel fabric is digitized against, so property lines sit on the roofs instead of ~10-30 ft off.
-  satellite: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
+  // Esri World Imagery: sharp/high-res to ~z19 (keyless, CORS *). It's georegistered a few ft off Utah's parcel fabric,
+  // but clarity matters more for the demo; the slight offset is explained by "lines are from county records."
+  satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
   streets: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
 };
-// USGS imagery is only cached to z16 (404s above) -> cap maxNativeZoom so Leaflet upscales the z16 tile past that
-// instead of requesting blank tiles. Esri streets cache to ~19. maxZoom 20 keeps the map zoomable either way.
-const tileOpts = (style) => ({ maxZoom: 20, minZoom: 3, maxNativeZoom: style === "streets" ? 19 : 16 });
+const tileOpts = () => ({ maxZoom: 20, minZoom: 3, maxNativeZoom: 19 });
 
 const UA = typeof navigator !== "undefined" ? navigator.userAgent : "";
 const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (typeof navigator !== "undefined" && navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
