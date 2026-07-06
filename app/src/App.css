@@ -1,4 +1,6 @@
-.app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; background: var(--graphite); }
+/* Pin to the viewport with fixed + inset:0 (not height units): iOS Safari's 100vh/100dvh can resolve shorter than
+   the visible area, leaving the app's background peeking below the nav. inset:0 fills the real viewport every time. */
+.app { position: fixed; inset: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--graphite); }
 
 /* ---- header ---- */
 .top {
