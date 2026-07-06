@@ -69,7 +69,7 @@ export default function Parcel3D({ center, groundMeters, ring, modelUrl, dims, p
       // So fetch a LARGER area (>=130 m, which Esri serves fine) at high res, then UV-crop the texture down to the
       // lot's real extent -> sharp Esri pixels AND aligned to the plane. USGS export is the fallback if Esri still fails.
       const gHalf = groundMeters / 2;
-      const fetchHalf = Math.max(gHalf, 65);
+      const fetchHalf = Math.max(gHalf, 130);   // Esri export 500s on small bboxes (in Provo it fails below ~240m wide), so fetch >=260m and crop
       const bbox = mercatorBbox(center.lat, center.lng, fetchHalf);
       const loader = new THREE.TextureLoader().setCrossOrigin("anonymous");
       const tex = await new Promise((res) => {
