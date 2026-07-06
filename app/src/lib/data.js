@@ -29,6 +29,8 @@ export async function saveCustomer(c) {
     lat: c.lat ?? null, lng: c.lng ?? null,
     updated_at: new Date().toISOString(),
   };
+  // NOTE: next_follow_up / follow_up_note are written via updateFollowUp (a separate call) so a customer save
+  // never references those columns — keeps saves working even before migration_3 is applied.
   Object.keys(row).forEach((k) => row[k] === undefined && delete row[k]);
   const { data, error } = await supabase.from("customers").upsert(row).select().single();
   if (error) throw error;
@@ -37,6 +39,38 @@ export async function saveCustomer(c) {
 
 export async function deleteCustomer(id) {
   const { error } = await supabase.from("customers").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw error;
+}
+
+// Set/clear a customer's next follow-up. Separate from saveCustomer so a missing column (pre-migration_3)
+// can't break core saves — callers wrap this in try/catch.
+export async function updateFollowUp(id, nextFollowUp, note) {
+  const { error } = await supabase
+    .from("customers")
+    .update({ next_follow_up: nextFollowUp || null, follow_up_note: note ?? null, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+// ---------- activities (per-customer timeline: call/text/knock/meeting/note) ----------
+export async function loadActivities() {
+  const { data, error } = await supabase
+    .from("activities")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function logActivity(a) {
+  const row = { org_id: a.org_id, customer_id: a.customer_id, kind: a.kind, note: a.note ?? null };
+  const { data, error } = await supabase.from("activities").insert(row).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteActivity(id) {
+  const { error } = await supabase.from("activities").delete().eq("id", id);
   if (error) throw error;
 }
 

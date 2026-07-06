@@ -199,6 +199,33 @@
   width: 100%; padding: 10px 11px; border: 1px solid var(--line); border-radius: 9px; font-size: 14px; font-family: inherit; background: #fff; color: var(--text); }
 .custcard textarea, .custfields textarea { resize: vertical; }
 
+/* ---- CRM: follow-up + activity timeline ---- */
+.crm { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 10px; display: flex; flex-direction: column; gap: 9px; }
+.crmrow { display: flex; align-items: center; gap: 9px; }
+.crmrow input[type="date"] { flex: 1; }
+.crmlab { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); }
+.actlog { display: flex; gap: 8px; align-items: stretch; }
+.actlog select { flex: 0 0 auto; width: auto; }
+.actlog input { flex: 1; min-width: 0; }
+.logbtn { flex: 0 0 auto; border: 0; background: var(--green); color: #fff; font-weight: 700; font-size: 13px; padding: 0 16px; border-radius: 9px; cursor: pointer; font-family: inherit; }
+.logbtn:active { transform: scale(.97); }
+.timeline { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; }
+.timeline li { display: grid; grid-template-columns: auto 1fr auto auto; align-items: baseline; gap: 8px; padding: 7px 0; border-top: 1px dashed var(--line); font-size: 13px; }
+.timeline li:first-child { border-top: 0; }
+.tkind { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; color: var(--green); }
+.tnote { color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.twhen { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; }
+.tdel { border: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.tdel:active { color: var(--text); }
+
+/* follow-ups due banner */
+.duebar { background: #fff5e6; border: 1px solid var(--amber); border-radius: 12px; padding: 11px 13px; margin-bottom: 11px; }
+.duehd { font-size: 13px; color: var(--text); margin-bottom: 8px; }
+.duehd b { color: var(--amber); }
+.duelist { display: flex; flex-wrap: wrap; gap: 7px; }
+.duechip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; font-family: inherit; }
+.duechip:active { background: var(--snow); }
+
 /* ---- stats ---- */
 .readouts { display: flex; gap: 9px; margin: 9px 0 6px; }
 .ro { flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 13px; padding: 16px 10px; text-align: center; }

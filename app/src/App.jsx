@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
-import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
+import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared, loadActivities, logActivity, deleteActivity, updateFollowUp } from "./lib/data";
 import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership, fetchUtahOwnership, fetchDavisOwnership } from "./lib/geo";
 import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS, resolveJurisdiction, JURISDICTIONS_VERSION } from "./lib/adu";
 import { aduSizeCap, PRIMARY_ABOVEGRADE_FACTOR } from "./lib/fit";
@@ -111,13 +111,27 @@ const OUTCOMES = [
 ];
 const OUT = Object.fromEntries(OUTCOMES.map((o) => [o.key, o]));
 const CUSTOMER_OUTCOMES = ["booked", "interested"];
+// Full sales pipeline. A door-knock drops a lead in as "interested"/"booked"; reps advance it here.
 const CUST_STATUS = [
   { key: "lead",       label: "Lead",       color: "#7c3aed" },
+  { key: "contacted",  label: "Contacted",  color: "#6366f1" },
   { key: "interested", label: "Interested", color: "#0ca5b8" },
+  { key: "quoted",     label: "Quoted",     color: "#d97706" },
   { key: "booked",     label: "Booked",     color: "#2563eb" },
+  { key: "lost",       label: "Lost",       color: "#94a3b8" },
 ];
 const CUSTOMER_KEYS = CUST_STATUS.map((s) => s.key);
-const STAT = { ...OUT, lead: { label: "Lead", color: "#7c3aed" } };
+const STAT = { ...OUT, lead: { label: "Lead", color: "#7c3aed" }, contacted: { label: "Contacted", color: "#6366f1" }, quoted: { label: "Quoted", color: "#d97706" }, lost: { label: "Lost", color: "#94a3b8" } };
+// Map-pin color for a customer/knock outcome: skip pre-contact ("lead") and dead ("lost"); everything else pins.
+const pinColor = (o) => (o && o !== "lead" && o !== "lost" && STAT[o] ? STAT[o].color : null);
+const ACTIVITY_KINDS = [
+  { key: "call",    label: "Call" },
+  { key: "text",    label: "Text" },
+  { key: "knock",   label: "Knock" },
+  { key: "meeting", label: "Meeting" },
+  { key: "note",    label: "Note" },
+];
+const ACT_LABEL = Object.fromEntries(ACTIVITY_KINDS.map((k) => [k.key, k.label]));
 const METHODS = [
   { key: "", label: "Placement: TBD" },
   { key: "backin", label: "Back it in" },
@@ -196,6 +210,46 @@ const Logo = () => (
   </svg>
 );
 
+// Follow-up scheduler + activity timeline for one customer card. Holds its own draft state so typing
+// doesn't re-render the whole list.
+function ActivityBlock({ acts = [], nextFollowUp, onLog, onRemove, onFollowUp }) {
+  const [kind, setKind] = useState("call");
+  const [note, setNote] = useState("");
+  const submit = () => { const n = note.trim(); if (!n && kind === "note") return; onLog(kind, n); setNote(""); };
+  const fmt = (iso) => {
+    try { const d = new Date(iso); return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`; }
+    catch { return ""; }
+  };
+  return (
+    <div className="crm">
+      <div className="crmrow">
+        <span className="crmlab">Follow up</span>
+        <input type="date" value={nextFollowUp || ""} onChange={(e) => onFollowUp(e.target.value)} />
+        {nextFollowUp && <button className="link" onClick={() => onFollowUp("")}>clear</button>}
+      </div>
+      <div className="actlog">
+        <select value={kind} onChange={(e) => setKind(e.target.value)}>
+          {ACTIVITY_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+        </select>
+        <input placeholder="What happened?" value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
+        <button className="logbtn" onClick={submit}>Log</button>
+      </div>
+      {acts.length > 0 && (
+        <ul className="timeline">
+          {acts.map((a) => (
+            <li key={a.id}>
+              <span className="tkind">{ACT_LABEL[a.kind] || a.kind}</span>
+              <span className="tnote">{a.note || ""}</span>
+              <span className="twhen">{fmt(a.created_at)}</span>
+              <button className="tdel" onClick={() => onRemove(a.id)} aria-label="Delete">×</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function App({ profile, signOut } = {}) {
   const mapRef = useRef(null);
   const baseLayerRef = useRef(null);
@@ -228,6 +282,7 @@ export default function App({ profile, signOut } = {}) {
 
   const [features, setFeatures] = useState([]);
   const [knocks, setKnocks] = useState({});      // shared CRM, loaded from Supabase (keyed by parcel_id or cust_<id>)
+  const [acts, setActs] = useState({});          // customer_id -> activity[] (newest first); loaded from Supabase
   const [flags, setFlags] = useState({});        // parcel_id -> 'fits' | 'no_fit' (rep override of computed verdict)
   const [tab, setTab] = useState("map");
   const [selected, setSelected] = useState(null);
@@ -265,6 +320,7 @@ export default function App({ profile, signOut } = {}) {
     center: r.lat != null && r.lng != null ? [r.lat, r.lng] : undefined,
     name: r.name, phone: r.phone, email: r.email,
     method: r.method, date: r.place_date, price: r.price, notes: r.notes,
+    nextFollowUp: r.next_follow_up || undefined, followUpNote: r.follow_up_note || undefined,
     saved: true,
   });
   const recToRow = (key, rec) => ({
@@ -308,10 +364,11 @@ export default function App({ profile, signOut } = {}) {
       markerByKey.current = {};
       const h = sizeForZoom(map.getZoom());
       Object.entries(knocksRef.current).forEach(([key, k]) => {
-        if (!OUT[k.outcome]) return;
+        const col = pinColor(k.outcome);
+        if (!col) return;
         const poly = idToLayer.current[key];
         if (!poly) return;
-        const m = L.marker(poly.getBounds().getCenter(), { icon: flagIcon(STAT[k.outcome].color, h) });
+        const m = L.marker(poly.getBounds().getCenter(), { icon: flagIcon(col, h) });
         m.on("click", () => setSelected(key));
         markerByKey.current[key] = m;
         group.addLayer(m);
@@ -345,6 +402,14 @@ export default function App({ profile, signOut } = {}) {
         });
         refreshShared();
       } catch (e) { console.error("load shared data failed", e); }
+      // activities load in isolation: a missing table (pre-migration_3) must not break customers/flags.
+      try {
+        const list = await loadActivities();
+        if (!alive) return;
+        const g = {};
+        list.forEach((a) => { (g[a.customer_id] = g[a.customer_id] || []).push(a); });
+        setActs(g);
+      } catch { /* activities table not migrated yet — timeline stays empty */ }
     };
     reload();
     const unsub = subscribeShared(orgId, () => reload());
@@ -452,12 +517,12 @@ export default function App({ profile, signOut } = {}) {
     const map = mapRef.current, group = markersRef.current;
     if (!map || !group) return;
     const k = knocks[key];
-    const isKnock = !!(k && OUT[k.outcome]);   // flag drops for ANY logged outcome (knocking history), colored by outcome
+    const col = k && pinColor(k.outcome);   // flag drops for any active outcome (knock history / live customer), colored by it
     const existing = markerByKey.current[key];
-    if (isKnock) {
+    if (col) {
       const poly = idToLayer.current[key];
       if (!poly) return;
-      const icon = flagIcon(STAT[k.outcome].color, sizeForZoom(map.getZoom()));
+      const icon = flagIcon(col, sizeForZoom(map.getZoom()));
       if (existing) existing.setIcon(icon);
       else {
         const m = L.marker(poly.getBounds().getCenter(), { icon });
@@ -847,6 +912,38 @@ export default function App({ profile, signOut } = {}) {
     touch(key); persist(key);
   };
 
+  // schedule / clear a follow-up on a customer. Persisted via updateFollowUp (separate call, safe pre-migration).
+  const setFollowUp = (key, date, note) => {
+    setKnocks((prev) => {
+      const next = { ...prev, [key]: { ...(prev[key] || {}), nextFollowUp: date || undefined, followUpNote: note ?? prev[key]?.followUpNote } };
+      knocksRef.current = next; return next;
+    });
+    const id = knocksRef.current[key]?._id;
+    if (!id) return;
+    const ver = touch(key);   // keep this key's local record across realtime reloads until the save lands
+    updateFollowUp(id, date || null, note ?? knocksRef.current[key]?.followUpNote ?? null)
+      .then(() => { if (verRef.current[key] === ver) dirtyRef.current.delete(key); })
+      .catch((e) => console.error("follow-up save failed", e));
+  };
+
+  // log one activity (call/text/knock/meeting/note) against a customer; optimistic local insert + persist.
+  const logActivityFor = (key, kind, note) => {
+    const cid = knocksRef.current[key]?._id;
+    if (!cid || !orgIdRef.current) return;
+    const optimistic = { id: "tmp_" + crypto.randomUUID(), customer_id: cid, kind, note: note || null, created_at: new Date().toISOString() };
+    setActs((prev) => ({ ...prev, [cid]: [optimistic, ...(prev[cid] || [])] }));
+    logActivity({ org_id: orgIdRef.current, customer_id: cid, kind, note })
+      .then((saved) => setActs((prev) => ({ ...prev, [cid]: [saved, ...(prev[cid] || []).filter((a) => a.id !== optimistic.id)] })))
+      .catch((e) => { console.error("log activity failed", e); setActs((prev) => ({ ...prev, [cid]: (prev[cid] || []).filter((a) => a.id !== optimistic.id) })); });
+  };
+
+  const removeActivity = (key, actId) => {
+    const cid = knocksRef.current[key]?._id;
+    if (!cid) return;
+    setActs((prev) => ({ ...prev, [cid]: (prev[cid] || []).filter((a) => a.id !== actId) }));
+    if (!String(actId).startsWith("tmp_")) deleteActivity(actId).catch((e) => console.error("delete activity failed", e));
+  };
+
   const addCustomer = () => {
     const id = crypto.randomUUID(), key = "cust_" + id;   // key matches the row's future "cust_"+id so reload is stable
     setKnocks((prev) => { const next = { ...prev, [key]: { _id: id, outcome: "lead", ts: Date.now() } }; knocksRef.current = next; return next; });
@@ -900,6 +997,19 @@ export default function App({ profile, signOut } = {}) {
     () => Object.entries(knocks).filter(([, k]) => CUSTOMER_KEYS.includes(k.outcome)).map(([key, k]) => ({ key, ...k })).sort((a, b) => b.ts - a.ts),
     [knocks]
   );
+  // follow-ups due today or overdue (skip closed-out stages), soonest first
+  const dueFollowUps = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return customers
+      .filter((c) => c.nextFollowUp && c.nextFollowUp <= todayStr && !["lost", "booked"].includes(c.outcome))
+      .sort((a, b) => a.nextFollowUp.localeCompare(b.nextFollowUp));
+  }, [customers]);
+  // pipeline: count of customers in each stage
+  const pipeline = useMemo(() => {
+    const t = Object.fromEntries(CUST_STATUS.map((s) => [s.key, 0]));
+    customers.forEach((c) => { const k = c.outcome || "lead"; if (k in t) t[k] += 1; });
+    return t;
+  }, [customers]);
 
   const stats = useMemo(() => {
     const tally = Object.fromEntries(OUTCOMES.map((o) => [o.key, 0]));
@@ -1077,6 +1187,18 @@ export default function App({ profile, signOut } = {}) {
               <span className="phd">Customers</span>
               <button className="addbtn" onClick={addCustomer}>+ Add</button>
             </div>
+            {dueFollowUps.length > 0 && (
+              <div className="duebar">
+                <div className="duehd"><b>{dueFollowUps.length}</b> follow-up{dueFollowUps.length > 1 ? "s" : ""} due</div>
+                <div className="duelist">
+                  {dueFollowUps.map((c) => (
+                    <button key={c.key} className="duechip" onClick={() => setExpanded((s) => new Set(s).add(c.key))}>
+                      {c.name || "(no name)"} · {c.nextFollowUp}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="list">
               {customers.length === 0 && <div className="empty">No customers yet. Tap <b>+ Add</b>, or mark a yard Interested or Booked on the map.</div>}
               {customers.map((c) => {
@@ -1116,6 +1238,13 @@ export default function App({ profile, signOut } = {}) {
                       <input type="number" placeholder="Price $" value={c.price || ""} onChange={(e) => updateCustomer(c.key, "price", e.target.value)} />
                     </div>
                     <textarea placeholder="Notes" rows={2} value={c.notes || ""} onChange={(e) => updateCustomer(c.key, "notes", e.target.value)} />
+                    <ActivityBlock
+                      acts={acts[c._id] || []}
+                      nextFollowUp={c.nextFollowUp}
+                      onLog={(kind, note) => logActivityFor(c.key, kind, note)}
+                      onRemove={(id) => removeActivity(c.key, id)}
+                      onFollowUp={(date) => setFollowUp(c.key, date)}
+                    />
                     <div className="cardactions">
                       {c.center && <button className="link" onClick={() => { setTab("map"); flyTo(c.center); }}>Show on map →</button>}
                       {canSave && <button className="savebtn" onClick={() => saveCustomer(c.key)}>Save</button>}
@@ -1130,41 +1259,59 @@ export default function App({ profile, signOut } = {}) {
         {tab === "stats" && (
           <section className="panel padded">
             <div className="swrap">
-            {stats.totalKnocks === 0 ? (
+            {stats.totalKnocks === 0 && customers.length === 0 ? (
               <div className="statsempty">
                 <div className="statsempty-icon">📊</div>
-                <b>No knocks logged yet</b>
+                <b>Nothing logged yet</b>
                 <p>Work a neighborhood on the Map and log each door — Booked, Interested, Not home. Your pipeline and conversion show up here.</p>
               </div>
             ) : (
               <>
-                <div className="statshero">
-                  <span className="sh-num">{stats.bookedRate}<i>%</i></span>
-                  <span className="sh-lab">booked of answered doors</span>
-                </div>
-                <div className="kpis">
-                  <div className="kpi"><b>{stats.totalKnocks}</b><span>Knocked</span></div>
-                  <div className="kpi"><b>{stats.answered}</b><span>Answered</span></div>
-                  <div className="kpi"><b style={{ color: OUT.booked.color }}>{stats.tally.booked || 0}</b><span>Booked</span></div>
-                  <div className="kpi"><b style={{ color: OUT.interested.color }}>{stats.tally.interested || 0}</b><span>Interested</span></div>
-                </div>
-                <div className="phd">Funnel</div>
-                <div className="funnel">
-                  {[
-                    { label: "Knocked", v: stats.totalKnocks, c: "var(--ink)" },
-                    { label: "Answered", v: stats.answered, c: OUT.not_home.color },
-                    { label: "Interested", v: (stats.tally.interested || 0) + (stats.tally.booked || 0), c: OUT.interested.color },
-                    { label: "Booked", v: stats.tally.booked || 0, c: OUT.booked.color },
-                  ].map((s) => (
-                    <div className="fstage" key={s.label}>
-                      <span className="flab">{s.label}</span>
-                      <span className="fbar"><span className="ffill" style={{ width: `${Math.max(3, (s.v / stats.totalKnocks) * 100)}%`, background: s.c }} /></span>
-                      <span className="fnum">{s.v}</span>
+                {stats.totalKnocks > 0 && (
+                  <>
+                    <div className="statshero">
+                      <span className="sh-num">{stats.bookedRate}<i>%</i></span>
+                      <span className="sh-lab">booked of answered doors</span>
                     </div>
-                  ))}
-                </div>
-                {(stats.tally.not_home || 0) > 0 && (
-                  <p className="note">🔁 {stats.tally.not_home} {stats.tally.not_home === 1 ? "door" : "doors"} to revisit (not home).</p>
+                    <div className="kpis">
+                      <div className="kpi"><b>{stats.totalKnocks}</b><span>Knocked</span></div>
+                      <div className="kpi"><b>{stats.answered}</b><span>Answered</span></div>
+                      <div className="kpi"><b style={{ color: OUT.booked.color }}>{stats.tally.booked || 0}</b><span>Booked</span></div>
+                      <div className="kpi"><b style={{ color: OUT.interested.color }}>{stats.tally.interested || 0}</b><span>Interested</span></div>
+                    </div>
+                    <div className="phd">Door funnel</div>
+                    <div className="funnel">
+                      {[
+                        { label: "Knocked", v: stats.totalKnocks, c: "var(--ink)" },
+                        { label: "Answered", v: stats.answered, c: OUT.not_home.color },
+                        { label: "Interested", v: (stats.tally.interested || 0) + (stats.tally.booked || 0), c: OUT.interested.color },
+                        { label: "Booked", v: stats.tally.booked || 0, c: OUT.booked.color },
+                      ].map((s) => (
+                        <div className="fstage" key={s.label}>
+                          <span className="flab">{s.label}</span>
+                          <span className="fbar"><span className="ffill" style={{ width: `${Math.max(3, (s.v / stats.totalKnocks) * 100)}%`, background: s.c }} /></span>
+                          <span className="fnum">{s.v}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {(stats.tally.not_home || 0) > 0 && (
+                      <p className="note">🔁 {stats.tally.not_home} {stats.tally.not_home === 1 ? "door" : "doors"} to revisit (not home).</p>
+                    )}
+                  </>
+                )}
+                {customers.length > 0 && (
+                  <>
+                    <div className="phd">Sales pipeline</div>
+                    <div className="funnel">
+                      {CUST_STATUS.map((s) => (
+                        <div className="fstage" key={s.key}>
+                          <span className="flab">{s.label}</span>
+                          <span className="fbar"><span className="ffill" style={{ width: `${Math.max(3, (pipeline[s.key] / Math.max(1, customers.length)) * 100)}%`, background: s.color }} /></span>
+                          <span className="fnum">{pipeline[s.key]}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </>
             )}
