@@ -1,11 +1,11 @@
 .auth {
   position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(120% 120% at 50% 0%, #1b2430, #0f1623);
+  background: radial-gradient(130% 130% at 50% 0%, #FFFFFF, #EFE9DC);   /* warm paper, matches the app */
   padding: 20px; padding-top: calc(env(safe-area-inset-top) + 20px);
 }
 .auth-card {
   width: 100%; max-width: 360px; background: #fff; border-radius: 18px; padding: 28px 24px;
-  box-shadow: 0 16px 50px rgba(0,0,0,.45); display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 12px 36px rgba(33,30,24,.14); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px;
 }
 .auth-logo { font-size: 22px; font-weight: 800; letter-spacing: -.3px; color: #14181e; }
 .auth-logo::first-letter { color: var(--green); }
