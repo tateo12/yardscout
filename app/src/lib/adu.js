@@ -59,10 +59,19 @@ export const RULE_OPTIONS = {
 // ---- Per-jurisdiction rule registry (auto-applied by the parcel's city/county) ----
 // Bump when any profile below changes so the fit cache re-judges. Rules are VERIFIED per city, never guessed;
 // a city not listed here falls back to its county baseline and is flagged "unverified" in the UI.
-export const JURISDICTIONS_VERSION = "utah-slco-2026-07-06b";
+export const JURISDICTIONS_VERSION = "utah-slco-davis-2026-07-06c";
 
-// Salt Lake County ordinance = the baseline for all unincorporated SLCo (Kearns + the metro townships).
-export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE };
+// Conservative, UNVERIFIED baseline for Davis County parcels until each city's ADU code is researched.
+// Detached allowed, typical residential setbacks, no size cap — resolveJurisdiction flags any Davis city as
+// verified:false (the UI shows "verify locally") since none are in the registry yet.
+export const DAVIS_BASELINE = {
+  name: "Davis County (baseline — verify locally)",
+  detachedAllowed: true, minLotSqft: 7000, sideFt: 6, rearFt: 10, frontYardFt: 20,
+  frontBehindFacadeFt: 10, maxPctOfPrimary: 0, maxAduSqft: 0,
+};
+
+// County ordinance baselines used when a parcel's city isn't yet in the per-city registry.
+export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE, "Davis County": DAVIS_BASELINE };
 
 // city name (as it appears in PARCEL_CITY, lowercased) -> { profile, verified }.
 // Seeded with the unincorporated metro townships, which are genuinely governed by the county code (verified).

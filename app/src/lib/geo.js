@@ -100,6 +100,37 @@ export async function fetchUtahOwnership(parcelIds, { chunk = 120, signal } = {}
   return out;
 }
 
+// Davis County owner data. The UGRC Parcels_Davis_LIR layer carries value/acres/year/primary-res/sqft (all populated),
+// but NOT owner name — that lives on the county's own GIS server (CORS-open, reflects Origin; no token). Join the
+// Davis GIS ParcelTaxID = UGRC PARCEL_ID (verified 1:1). No sale/deed date exists in Davis (see docs/DATA_SOURCES.md)
+// -> no tenure, leads cap below "hot" like the pre-vesting Utah County path.
+export const DAVIS_COUNTY = "https://gisportal-pro.daviscountyutah.gov/server/rest/services/Operational/Parcels/MapServer/0";
+const DAVIS_OWNER_FIELDS = "ParcelTaxID,ParcelOwnerName,ParcelOwnerMailAddressLine1,ParcelOwnerMailCity,ParcelOwnerMailState,ParcelOwnerMailZipcode,ParcelFullSitusAddress,ParcelSitusCity";
+
+export async function fetchDavisOwnership(parcelIds, { chunk = 120, signal } = {}) {
+  const ids = [...new Set((parcelIds || []).filter(Boolean).map(String))];
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += chunk) chunks.push(ids.slice(i, i + chunk));
+  const out = new Map(); // ParcelTaxID -> raw Davis attributes
+  let failed = 0;
+  await Promise.all(chunks.map(async (slice) => {
+    const list = slice.map((id) => `'${id.replace(/'/g, "")}'`).join(",");
+    try {
+      const body = new URLSearchParams({ f: "json", returnGeometry: "false", outFields: DAVIS_OWNER_FIELDS, where: `ParcelTaxID IN (${list})` });
+      const r = await fetch(`${DAVIS_COUNTY}/query`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body, signal });
+      if (!r.ok) throw new Error(`davis ${r.status}`);
+      const j = await r.json();
+      if (j.error) throw new Error(j.error.message);
+      for (const f of j.features || []) {
+        const a = f.attributes || {};
+        if (a.ParcelTaxID) out.set(String(a.ParcelTaxID), a);
+      }
+    } catch (e) { failed++; if (typeof console !== "undefined") console.warn("fetchDavisOwnership chunk failed:", e?.message || e); }
+  }));
+  out.partial = failed > 0;
+  return out;
+}
+
 export async function fetchOwnership(parcelIds, { chunk = 150, signal } = {}) {
   const ids = [...new Set((parcelIds || []).filter(Boolean).map(String))];
   const chunks = [];

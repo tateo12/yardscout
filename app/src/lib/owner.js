@@ -154,6 +154,44 @@ export function toOwnerRecordUC(a, now = new Date(), fetchedAt = Date.now()) {
   };
 }
 
+// Davis County occupancy. Owner name + mailing address come from the county GIS server; the primary-residence flag
+// comes from the parcel's LIR record. Mail written as "1502 EAST TARTAN WAY", situs as "1502 E TARTAN WAY" — collapse
+// directionals before comparing. Entity name -> investor; mail matches situs OR primary-res exemption -> owner-occupant;
+// owner in a different city -> investor; else unknown. Heuristic (labeled).
+const DIRW = { EAST: "E", WEST: "W", NORTH: "N", SOUTH: "S", NORTHEAST: "NE", NORTHWEST: "NW", SOUTHEAST: "SE", SOUTHWEST: "SW" };
+const normDir = (s) => normAddr(s).split(" ").map((w) => DIRW[w] || w).join(" ");
+
+export function classifyOccupancyDavis(davis, lir = {}) {
+  if (ENTITY.test(String(davis.ParcelOwnerName || "").toUpperCase())) return { tag: "investor", why: "entity-owned (LLC/Inc/etc.)" };
+  const mail = normDir(davis.ParcelOwnerMailAddressLine1), situs = normDir(davis.ParcelFullSitusAddress);
+  if (mail && situs && (mail === situs || situs.startsWith(mail) || mail.startsWith(situs)))
+    return { tag: "owner-occupant", why: "owner mails to the property" };
+  if (lir.PRIMARY_RES === "Y") return { tag: "owner-occupant", why: "claims the primary-residence exemption" };
+  const mc = normAddr(davis.ParcelOwnerMailCity), sc = normAddr(davis.ParcelSitusCity);
+  if (mc && sc && mc !== sc) return { tag: "investor", why: "owner lives in a different city" };
+  if (lir.PRIMARY_RES === "N") return { tag: "investor", why: "no primary-residence exemption (2nd home / rental)" };
+  return { tag: "unknown", why: "insufficient address data" };
+}
+
+// Davis lead record: owner name (county GIS) + occupancy + value/age/sqft (LIR). No sale/deed date exists in Davis,
+// so tenure stays null and leads cap below "hot" (see docs/DATA_SOURCES.md). `davis` = Davis GIS attrs, `lir` = parcel LIR props.
+export function toOwnerRecordDavis(davis, lir = {}, now = new Date(), fetchedAt = Date.now()) {
+  const occ = classifyOccupancyDavis(davis, lir);
+  const value = lir.TOTAL_MKT_VALUE || null;
+  const score = leadScoreNoTenure({ marketValue: value, yearBuilt: lir.BUILT_YR, occupancy: occ.tag });
+  return {
+    parcelId: String(lir.PARCEL_ID || davis.ParcelTaxID),
+    ownerName: davis.ParcelOwnerName || null,
+    occupancy: occ.tag, occupancyWhy: occ.why, pitch: pitchFor(occ.tag),
+    tenureYrs: null,                 // Davis exposes no sale/deed/vesting date -> tenure unknown
+    marketValue: value,
+    yearBuilt: lir.BUILT_YR || null,
+    sqft: lir.BLDG_SQFT || null,
+    score, tier: equityTier(score),
+    fetchedAt,
+  };
+}
+
 // Build a lead record from LIR fields alone — for counties with no rich owner/sale service (e.g. Utah County).
 // No vesting date (tenure unknown) and no owner name; occupancy comes from the primary-residence exemption flag.
 // `a` = the parcel's LIR properties (PRIMARY_RES, TOTAL_MKT_VALUE, BUILT_YR, BLDG_SQFT, PARCEL_ID).

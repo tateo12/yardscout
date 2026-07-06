@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared } from "./lib/data";
-import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership, fetchUtahOwnership } from "./lib/geo";
+import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership, fetchUtahOwnership, fetchDavisOwnership } from "./lib/geo";
 import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS, resolveJurisdiction, JURISDICTIONS_VERSION } from "./lib/adu";
 import { aduSizeCap, PRIMARY_ABOVEGRADE_FACTOR } from "./lib/fit";
-import { toOwnerRecord, toOwnerRecordLIR, toOwnerRecordUC } from "./lib/owner";
+import { toOwnerRecord, toOwnerRecordLIR, toOwnerRecordUC, toOwnerRecordDavis } from "./lib/owner";
 import { sharePdf } from "./lib/share";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -16,6 +16,7 @@ const PARCELS_ORG = "https://services1.arcgis.com/99lidPhWCzftIe9K/arcgis/rest/s
 const PARCEL_LAYERS = [
   `${PARCELS_ORG}/Parcels_SaltLake_LIR/FeatureServer/0/query`,
   `${PARCELS_ORG}/Parcels_Utah_LIR/FeatureServer/0/query`,
+  `${PARCELS_ORG}/Parcels_Davis_LIR/FeatureServer/0/query`,
 ];
 
 // unit + scoring (open-space from parcel attributes; access/crane is the footprint pass)
@@ -519,15 +520,18 @@ export default function App({ profile, signOut } = {}) {
   const computeOwners = useCallback(async () => {
     const map = mapRef.current;
     if (!map || !layerRef.current || map.getZoom() < FIT_ZOOM) return;
-    const now = Date.now(); const needSL = []; const needUC = []; const ucFeats = new Map();
+    const now = Date.now(); const needSL = []; const needUC = []; const needDavis = [];
+    const ucFeats = new Map(); const davisFeats = new Map();
     layerRef.current.eachLayer((l) => {
       const p = l.feature.properties; const rec = ownerCacheRef.current.get(p._key);
       if (rec && now - (rec.fetchedAt || 0) <= OWNER_TTL) return;
-      // Salt Lake County -> SLCo assessor service (owner + tenure). Utah County -> Utah County OwnerParcel service (owner + occupancy + value, no tenure).
+      // SLCo -> assessor service (owner + tenure). Utah County -> OwnerParcel (owner + occupancy + value + vesting-year tenure).
+      // Davis -> county GIS owner name + LIR value/age/occupancy (no tenure). Anything else -> LIR fields only.
       if (p.COUNTY_NAME === "Salt Lake County") needSL.push(p._key);
+      else if (p.COUNTY_NAME === "Davis County") { needDavis.push(p._key); davisFeats.set(p._key, l.feature); }
       else { needUC.push(p._key); ucFeats.set(p._key, l.feature); }
     });
-    if (!needSL.length && !needUC.length) return;
+    if (!needSL.length && !needUC.length && !needDavis.length) return;
     const nd = new Date();
     const token = ++ownerToken.current;
     // Utah County: fetch the assessor OwnerParcel service; fall back to the parcel's LIR fields for any parcel it doesn't return.
@@ -540,6 +544,18 @@ export default function App({ profile, signOut } = {}) {
         const attrs = ucRaw.get(key);
         if (attrs) ownerCacheRef.current.set(key, toOwnerRecordUC(attrs, nd));
         else { const f = ucFeats.get(key); if (f) ownerCacheRef.current.set(key, toOwnerRecordLIR(f.properties, nd)); }
+      }
+    }
+    // Davis County: fetch owner name from the county GIS server, combine with the parcel's LIR fields; fall back to LIR-only.
+    if (needDavis.length) {
+      let dRaw = new Map();
+      try { dRaw = await fetchDavisOwnership(needDavis); } catch { dRaw = new Map(); }
+      if (token !== ownerToken.current || !layerRef.current) return;
+      if (dRaw.partial) setOwnerPartial(true);
+      for (const key of needDavis) {
+        const f = davisFeats.get(key); if (!f) continue;
+        const attrs = dRaw.get(key);
+        ownerCacheRef.current.set(key, attrs ? toOwnerRecordDavis(attrs, f.properties, nd) : toOwnerRecordLIR(f.properties, nd));
       }
     }
     let raw = new Map();
@@ -754,6 +770,15 @@ export default function App({ profile, signOut } = {}) {
       const l = idToLayer.current[key];
       if (l && !flagsRef.current[key]) { l.feature.properties._ownerTier = r.tier; l.setStyle(styleFor(l.feature, settingsRef.current)); }
     };
+    // Davis County: fetch owner name from the county GIS server + combine with LIR fields; fall back to LIR-only.
+    if (feat && feat.properties.COUNTY_NAME === "Davis County") {
+      let alive = true;
+      fetchDavisOwnership([key]).then((raw) => {
+        const attrs = raw.get(key);
+        if (alive) applyRecord(attrs ? toOwnerRecordDavis(attrs, feat.properties) : toOwnerRecordLIR(feat.properties));
+      }).catch(() => { if (alive) applyRecord(toOwnerRecordLIR(feat.properties)); });
+      return () => { alive = false; };
+    }
     // Utah County: fetch the county OwnerParcel service (owner + occupancy + value); fall back to LIR fields if not returned
     if (feat && feat.properties.COUNTY_NAME !== "Salt Lake County") {
       let alive = true;
