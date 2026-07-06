@@ -129,7 +129,7 @@ export default function Parcel3D({ center, groundMeters, ring, modelUrl, dims, p
           gltf.scene.position.z = -((place.lat - center.lat) * mPerLat);
           gltf.scene.rotation.y = place.headingRad || 0;
         } else {
-          gltf.scene.position.z = groundMeters * 0.18;   // no computed fit -> start off-center, off the house
+          gltf.scene.position.set(0, gltf.scene.position.y, 0);   // no computed fit spot -> center in the lot (never outside the property lines)
         }
         scene.add(gltf.scene);
         model = gltf.scene;
