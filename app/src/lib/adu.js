@@ -59,7 +59,7 @@ export const RULE_OPTIONS = {
 // ---- Per-jurisdiction rule registry (auto-applied by the parcel's city/county) ----
 // Bump when any profile below changes so the fit cache re-judges. Rules are VERIFIED per city, never guessed;
 // a city not listed here falls back to its county baseline and is flagged "unverified" in the UI.
-export const JURISDICTIONS_VERSION = "utah-slco-2026-07-06a";
+export const JURISDICTIONS_VERSION = "utah-slco-2026-07-06b";
 
 // Salt Lake County ordinance = the baseline for all unincorporated SLCo (Kearns + the metro townships).
 export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE };

@@ -10,7 +10,11 @@ const SQFT_PER_M2 = 10.7639104;
 // Returns a CLEAN convex local ring for the fit engine, or convex:false -> needs-check.
 export function prepParcel(parcel, frame, maxHullRatio = 1.06) {
   const trueM2 = turfArea(parcel);
-  const lotSqft = trueM2 * SQFT_PER_M2;
+  // Lot SIZE comes from the county's recorded acreage (reliable data), NOT from measuring the drawn polygon (geometry
+  // can be simplified/offset). The polygon is only used for SHAPE (placing the unit). Fall back to the measured area
+  // if PARCEL_ACRES is missing/zero.
+  const acres = Number(parcel.properties?.PARCEL_ACRES) || 0;
+  const lotSqft = acres > 0 ? acres * 43560 : trueM2 * SQFT_PER_M2;
   let hull;
   try { hull = turfConvex(parcel); } catch { hull = null; }
   if (!hull) return { convex: false, ring: null, lotSqft, reason: "nonconvex_parcel" };
