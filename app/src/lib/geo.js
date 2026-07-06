@@ -124,10 +124,14 @@ export async function fetchOwnership(parcelIds, { chunk = 150, signal } = {}) {
 // Pick the existing house: rank candidate footprints by area, keep those meaningfully inside the parcel.
 // Returns { house: feature|null, others: feature[] }.
 export function pickHouse(parcel, buildings) {
-  const poly = turfPolygon(parcel.geometry.coordinates);
+  const g = parcel.geometry;
+  const ring0 = g?.type === "MultiPolygon" ? g.coordinates?.[0]?.[0] : g?.coordinates?.[0];
+  if (!Array.isArray(ring0) || ring0.length < 4) return { house: null, others: [] };
+  const poly = turfPolygon([ring0]);
   const inside = [];
   for (const b of buildings) {
     if (b.geometry?.type !== "Polygon") continue;
+    if (!Array.isArray(b.geometry.coordinates?.[0]) || b.geometry.coordinates[0].length < 4) continue;   // skip degenerate footprints
     let c;
     try { c = turfCentroid(b); } catch { continue; }
     if (!booleanPointInPolygon(c, poly)) continue;
@@ -148,6 +152,10 @@ export async function computeParcelFit(parcel, opts) {
 // Same computation but against already-fetched building/road sets — so a whole viewport can be scored from one
 // pair of fetches (used to color the map at block zoom). Pure/sync.
 export function fitParcelWith(parcel, buildings, roads, { models, profile, overlay }) {
+  // guard degenerate / MultiPolygon-only geometry up front so a bad parcel can't throw and kill the viewport scan
+  const g0 = parcel.geometry;
+  const ring0 = g0?.type === "MultiPolygon" ? g0.coordinates?.[0]?.[0] : g0?.coordinates?.[0];
+  if (!Array.isArray(ring0) || ring0.length < 4) return { status: "needs-check", reason: "bad_geometry", lotSqft: 0, road: null };
   const frame = makeFrame(turfCentroid(parcel).geometry.coordinates);
   const { convex, ring, lotSqft } = prepParcel(parcel, frame);
   const base = { lotSqft, road: null };

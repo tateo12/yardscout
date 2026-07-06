@@ -492,13 +492,15 @@ export default function App({ profile, signOut } = {}) {
     uncached.forEach((l) => {
       const p = l.feature.properties, key = p._key;
       if (fitCacheRef.current.has(key)) return;
-      // judge each lot by ITS OWN city's rules (auto-detected from the parcel); fall back to the county baseline
-      const { profile } = resolveJurisdiction({ city: p.PARCEL_CITY, county: p.COUNTY_NAME, fallback: aduProfileRef.current });
-      const r = fitParcelWith(l.feature, buildings, roads, { models: ADU_MODELS, profile, overlay: aduOverlayRef.current });
-      const entry = { status: r.status, color: r.status === "fits" ? r.color : null };
-      fitCacheRef.current.set(key, entry);
-      p._fitStatus = entry.status; p._fitColor = entry.color;
-      l.setStyle(styleFor(l.feature, settingsRef.current));
+      try {
+        // judge each lot by ITS OWN city's rules (auto-detected from the parcel); fall back to the county baseline
+        const { profile } = resolveJurisdiction({ city: p.PARCEL_CITY, county: p.COUNTY_NAME, fallback: aduProfileRef.current });
+        const r = fitParcelWith(l.feature, buildings, roads, { models: ADU_MODELS, profile, overlay: aduOverlayRef.current });
+        const entry = { status: r.status, color: r.status === "fits" ? r.color : null };
+        fitCacheRef.current.set(key, entry);
+        p._fitStatus = entry.status; p._fitColor = entry.color;
+        l.setStyle(styleFor(l.feature, settingsRef.current));
+      } catch { /* one bad parcel must never kill the whole viewport scan */ }
     });
     persistFits();
   }, []);
