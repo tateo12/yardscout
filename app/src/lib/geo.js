@@ -70,7 +70,7 @@ const OWNER_FIELDS = "parcel_id,own_name,own_addr,own_citystate,prop_location,da
 // blocks bare bots but a browser request carries a UA automatically, so the app is fine. Join PARCELID = UGRC PARCEL_ID
 // (verified 1:1). No sale/deed date exists in Utah County (see docs/DATA_SOURCES.md) -> no tenure, leads cap below "hot".
 export const UTAH_COUNTY = "https://maps.utahcounty.gov/arcgis/rest/services/Parcels/Parcel_TaxParcels/MapServer/2";
-const UC_OWNER_FIELDS = "PARCELID,OWNER_NAME,SITE_FULL_ADDRESS,SITE_CITY,OWN_STREET_ADDRESS,OWN_CITY,MKT_CUR_VALUE,TXBL_CUR_VALUE,YEARBLT_RES,GLA_RES,TOTAL_ABOVE_GRADE_AREA,EXEMPT_RES";
+const UC_OWNER_FIELDS = "PARCELID,OWNER_NAME,SITE_FULL_ADDRESS,SITE_CITY,OWN_STREET_ADDRESS,OWN_CITY,MKT_CUR_VALUE,TXBL_CUR_VALUE,YEARBLT_RES,GLA_RES,TOTAL_ABOVE_GRADE_AREA,EXEMPT_RES,VESTING_DOC";
 
 export async function fetchUtahOwnership(parcelIds, { chunk = 120, signal } = {}) {
   const ids = [...new Set((parcelIds || []).filter(Boolean).map(String))];

@@ -121,15 +121,30 @@ export function classifyOccupancyUC(a) {
 
 // Utah County lead record from the assessor OwnerParcel layer. Owner name + real occupancy + value + above-grade.
 // No tenure exists in Utah County, so tYrs stays null and leads cap below "hot" (see docs/DATA_SOURCES.md).
+// Utah County stores the current owner's vesting deed as "<recorderEntry>-<YEAR>" (e.g. "72122-2024"). That year is
+// the recording year = when this owner acquired the property -> real tenure at YEAR granularity (no month/day).
+export function parseVestingYear(doc) {
+  const s = String(doc || "");
+  const m = s.match(/-\s*((?:19|20)\d{2})\b/) || s.match(/((?:19|20)\d{2})\s*(?:\(MORE\))?\s*$/);
+  const y = m ? Number(m[1]) : NaN;
+  return y > 1900 && y <= new Date().getFullYear() ? y : null;
+}
+
 export function toOwnerRecordUC(a, now = new Date(), fetchedAt = Date.now()) {
   const occ = classifyOccupancyUC(a);
   const value = a.MKT_CUR_VALUE || null;
-  const score = leadScoreNoTenure({ marketValue: value, yearBuilt: a.YEARBLT_RES, occupancy: occ.tag });
+  const vestYear = parseVestingYear(a.VESTING_DOC);
+  const tYrs = vestYear != null ? Math.max(0, now.getFullYear() - vestYear) : null;
+  // Real tenure (from the vesting year) -> tenure-based score, so Utah leads can reach "hot" like Salt Lake.
+  // Fall back to the age+occupancy+value proxy only when the vesting year is missing.
+  const score = vestYear != null
+    ? leadScore({ date_created: `Jan 1 ${vestYear}`, total_full_mkt: value, year_built: a.YEARBLT_RES }, now)
+    : leadScoreNoTenure({ marketValue: value, yearBuilt: a.YEARBLT_RES, occupancy: occ.tag });
   return {
     parcelId: String(a.PARCELID),
     ownerName: a.OWNER_NAME || null,
     occupancy: occ.tag, occupancyWhy: occ.why, pitch: pitchFor(occ.tag),
-    tenureYrs: null,
+    tenureYrs: tYrs,
     marketValue: value,
     yearBuilt: a.YEARBLT_RES || null,
     sqft: a.GLA_RES || a.TOTAL_ABOVE_GRADE_AREA || null,
