@@ -1,5 +1,7 @@
-# Netlify / Cloudflare Pages: never cache the HTML entrypoint or version file, so deploys are instant.
-# (JS/CSS under /assets are content-hashed and safe to cache long.)
+# Never cache the HTML entrypoint or version file, so a normal reload always gets the latest deploy.
+# (JS/CSS under /assets are content-hashed, so they're safe to cache forever.) Cloudflare Workers Assets honors this.
+/
+  Cache-Control: no-cache
 /index.html
   Cache-Control: no-cache
 /version.json
