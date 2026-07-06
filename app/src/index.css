@@ -16,10 +16,12 @@
   --red:      #C4552D;   /* terracotta */
 }
 * { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
+/* Lock the document itself: the app pins to the viewport with position:fixed, so the body must not scroll
+   or rubber-band on iOS (that's what let the background peek under the bottom nav and made it look like it floated). */
+html, body, #root { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
 body {
   font-family: var(--ui);
   -webkit-font-smoothing: antialiased;
   color: var(--text);
-  background: var(--graphite);
+  background: var(--card);   /* match the bottom nav so any hairline peek is invisible */
 }
