@@ -121,6 +121,21 @@ Dedicated study (`solar-scout`) verdict: **solar door-knocking is crowded and ma
 
 **Strategic implication:** "Yardscout for solar" would be a late, undifferentiated entrant. The value of this research is the *inverse*: solar proves the concept works and is worth real money, and it confirms that **the ADU/backyard-structure niche is genuinely greenfield** - nobody has assembled this stack there. It also means the *first expansion vertical should NOT be solar* - pick a trade with no incumbent tooling (RV pad, shop/garage, fence, concrete) rather than fighting SalesRabbit/PropertyRadar. Caveat: several vendors hide pricing behind sales calls, so competitor figures are directional; Aurora's tiers are from third-party reviews.
 
+### CRM / ADU / proptech landscape (researched 2026-07-06)
+No product does all four Yardscout pieces (region-wide physical ADU-fit + property lines + owner/equity score + canvassing CRM). The market is two mature halves that don't touch:
+- **Canvassing CRMs** with owner/equity scoring but NO physical fit: SalesRabbit + DataGrid AI (per-home Buyer Score, huge install base), PropertyRadar ($119-599/mo, 250+ owner/equity filters + built-in canvassing app), SPOTIO (~$39-129/user/mo), Ecanvasser, Knockbase.
+- **ADU feasibility tools** with per-parcel physical fit but NO canvassing, and all INBOUND (homeowner/builder checks one lot): Symbium (also sells zoning-compliance to city govts), Canibuild ($149-225/mo), FutureLot (2024, MA), Buildora IQ + Deepblocks (region-wide parcel screening, developer-focused). Manufactured-home dealer CRMs (Lasso, EverLogic, MhCRM) are inbound lot-management, integration channel not competitor.
+
+**Closest analogs (each missing one axis):** PropertyRadar (equity + canvassing, no fit); Buildora IQ / Deepblocks (region-wide fit scoring, no equity, no canvassing). **The parcel-fit engine is NOT the moat** - it already exists (Buildora IQ, Deepblocks).
+
+**The open lane = the inversion:** every ADU tool is built for inbound demand; NO ONE has turned ADU feasibility into an OUTBOUND canvassing engine that scores a whole region and dispatches reps to the winners. That inversion + the ADU field-sales buyer is Yardscout's real thesis, and it's unoccupied.
+
+**Defensible edge (narrow, execution-based):** (1) the fusion + the specific buyer neither camp serves; (2) the **per-city setback rules library** = the accumulating, expensive-to-copy asset - concentrate the moat here; (3) free Utah parcel data = margin/freshness, but launch-only (needs a data strategy to scale nationally). No patent-grade moat.
+
+**Biggest threat = an incumbent bolting on the missing half, not a current competitor.** Ranked: (1) SalesRabbit or PropertyRadar adding an ADU-fit layer (they have canvassing + equity + maps + big user bases; the setback calc is the smallest gap) - the real threat; (2) Buildora IQ / Canibuild adding canvassing/CRM; (3) a funded ADU builder building outbound targeting in-house (lower prob). **Win condition: speed to lock the ADU field-sales niche.**
+
+**Pricing signal:** buyers already pay $119-599/mo for HALF this stack (PropertyRadar), and ADU feasibility tools run $149-225/mo. Per-seat is the norm; $100-300/seat/mo is consistent with precedent. **Current $89/seat is likely underpriced** - room to raise, or to blend per-seat (CRM) + a usage tier (region scoring). Caveat: most B2B pricing is demo-gated/estimated; no confirmed stealth/venture competitor doing the exact combo, but that's strongly-supported not provable.
+
 ---
 
 ## 8. Trust and verification strategy
