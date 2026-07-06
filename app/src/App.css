@@ -1,4 +1,4 @@
-.app { display: flex; flex-direction: column; height: 100%; overflow: hidden; background: var(--graphite); }
+.app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; background: var(--graphite); }
 
 /* ---- header ---- */
 .top {
