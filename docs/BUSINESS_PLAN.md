@@ -79,6 +79,12 @@ Rationale: one extra placement ($5k-20k) makes $89 a rounding error; the fit-map
 ### Explicitly NOT doing: managed canvassing / in-field labor
 Founder decision (2026-07-04): Yardscout stays a software + data company. We do **not** supply canvassers or run field teams. Managed canvassing looks like more revenue but turns the company into a recruiting/scheduling/labor-management operation - the exact people-heavy, off-desk business the founder is deliberately avoiding. Dealers own the feet on the street; we own the software. This constraint is a feature, not a limitation.
 
+### Homeowner outreach (researched 2026-07-06): direct mail, NOT cold email
+Owner **email is not in any free record** (assessor data + even the Utah voter file exclude it). Getting emails means paid skip-tracing (~$0.10/record), but the good match rate is *phone* not email, mainstream email providers ban purchased/appended lists, and cold-blasting them wrecks domain deliverability (spam traps) AND risks CAN-SPAM penalties up to ~$53k/email. Cold call/text is worse (TCPA $500-1,500/violation). So auto-email/text on purchased data is a legal + deliverability landmine - do NOT build it as a core feature.
+- **The buildable, compliant channel is programmatic DIRECT MAIL**, because Yardscout already has owner name + mailing address for free, and mail needs no consent/opt-out/TCPA machinery. One API call per lead turns filtered ADU-viable + high-equity lots into postcards. APIs: **PostGrid** (~$0.82/postcard all-in, pay-per-piece, no contract, free sandbox - the bootstrap pick) or **Lob** (~$0.48/piece but ~$260+/mo plan). Real-estate mail runs ~1-2% response over 4-5 touches -> model ~$2.50-4/lead per campaign.
+- **Skip-tracing = optional per-lead enrichment, not core.** If a rep wants to chase a hot lead by phone/email, offer a per-record trace (~$0.10) but let THEM contact from their own account so TCPA/CAN-SPAM/deliverability liability never lands on Yardscout. Never auto-blast from a shared domain.
+- Flag for counsel before launch: Utah's consumer-privacy + telephone-solicitation statutes; live PostGrid/Lob pricing moves with USPS postage.
+
 ### Secondary / later
 - **Filtered lead-list export** as a standalone product - sell the list (viable + owner-occupied + long-tenure) to businesses that don't want the whole app. Revenue without seats.
 - **Homeowner self-serve widget** ("check your address") embedded on a dealer's or city's site; captures leads.
