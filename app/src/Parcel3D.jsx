@@ -65,15 +65,22 @@ export default function Parcel3D({ center, groundMeters, ring, modelUrl, dims, p
       sun.shadow.camera.near = 0.5; sun.shadow.camera.far = d * 5;
       scene.add(sun);
 
-      // satellite ground: Esri is sharp but its export 500s on small (zoomed-in) bboxes -- common for small lots.
-      // Fall back to USGS export (resamples, so it returns an image at any zoom) so the ground is never blank.
-      const bbox = mercatorBbox(center.lat, center.lng, groundMeters / 2);
+      // satellite ground. Esri is sharp but its export 500s on a small (zoomed-in) bbox -- common for small lots.
+      // So fetch a LARGER area (>=130 m, which Esri serves fine) at high res, then UV-crop the texture down to the
+      // lot's real extent -> sharp Esri pixels AND aligned to the plane. USGS export is the fallback if Esri still fails.
+      const half = groundMeters / 2;
+      const fetchHalf = Math.max(half, 65);
+      const bbox = mercatorBbox(center.lat, center.lng, fetchHalf);
       const loader = new THREE.TextureLoader().setCrossOrigin("anonymous");
       const tex = await new Promise((res) => {
         loader.load(esriExport(bbox, 1024), res, undefined,
           () => loader.load(usgsExport(bbox, 1024), res, undefined, () => res(null)));
       });
-      if (tex) tex.colorSpace = THREE.SRGBColorSpace;
+      if (tex) {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const frac = half / fetchHalf;                // show only the center slice that matches the ground plane
+        if (frac < 1) { tex.repeat.set(frac, frac); tex.offset.set((1 - frac) / 2, (1 - frac) / 2); tex.needsUpdate = true; }
+      }
       const ground = new THREE.Mesh(
         new THREE.PlaneGeometry(groundMeters, groundMeters),
         new THREE.MeshStandardMaterial({ map: tex || null, color: tex ? 0xffffff : 0x6f7d57, roughness: 1 })
