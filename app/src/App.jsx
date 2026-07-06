@@ -145,11 +145,11 @@ function scoreOf(props) {
 // parcel color = equity-lead tier. Knocks/customers never recolor the parcel — only the flag.
 const styleFor = (feat, _s) => {   // _s (settings) kept for call-site symmetry; not needed now that color = tier only
   const p = feat.properties;
-  // Only the lots that WORK are highlighted; everything else is plain satellite (still tappable).
-  // Coarse open-space tier colors a lot immediately so the map is never blank. Once the exact fit runs (block zoom)
-  // it sets _fitStatus, and any lot that doesn't actually fit is hidden -- so a highlighted lot matches the tap.
-  const winner = p._fitStatus ? p._fitStatus === "fits" : p._tier === "green";
-  if (!winner) return HIDDEN_STYLE;
+  // A lot only gets the colored lead fill when the EXACT geometry fit confirms a unit fits (never the coarse
+  // open-space guess) -- so the map can't show orange on a lot the tap then says "no fit". Everything else (no-fit,
+  // or not yet judged) gets a thin neutral outline: the parcel is still visible + tappable, just not a "lead".
+  const winner = p._fitStatus === "fits";
+  if (!winner) return NONFIT_STYLE;
   // The map only ever speaks Ember: shade by equity-lead tier once we have owner data; a fitting lot that isn't
   // rated yet (data still loading / missing) gets a neutral graphite gray — never the old green/amber fit scale.
   const c = p._ownerTier ? EQ[p._ownerTier].color : PENDING_COLOR;
@@ -158,8 +158,8 @@ const styleFor = (feat, _s) => {   // _s (settings) kept for call-site symmetry;
   return { color: c, weight: 2.5, opacity: 1, fillColor: c, fillOpacity: 0.42 };
 };
 const PENDING_COLOR = "#A7A092";  // fits, not yet rated (warm neutral, on-brand with the paper theme)
-// invisible fill so non-winners stay clickable (tap any house at a door) without cluttering the map
-const HIDDEN_STYLE = { stroke: false, fill: true, fillColor: "#16b866", fillOpacity: 0.001 };
+// non-winners (no-fit / not yet judged): thin neutral outline so the parcel is visible + tappable but clearly not a lead
+const NONFIT_STYLE = { stroke: true, color: "#8f8a7e", weight: 1, opacity: 0.45, fill: true, fillColor: "#000", fillOpacity: 0.001 };
 
 // flag marker (Option D): pole-left flag for CUSTOMERS, recolored via currentColor. Size is baked into the
 // icon so the clickable area always matches what you see; icons regenerate on zoom instead of CSS-scaling.
@@ -733,7 +733,22 @@ export default function App({ profile, signOut } = {}) {
     let alive = true; setAduFit(null); setAduLoading(true);
     const { profile } = resolveJurisdiction({ city: feat.properties.PARCEL_CITY, county: feat.properties.COUNTY_NAME, fallback: aduProfile });
     computeParcelFit(feat, { models: ADU_MODELS, profile, overlay: aduOverlay })
-      .then((r) => { if (alive) setAduFit({ ...r, _key: selected }); })
+      .then((r) => {
+        if (!alive) return;
+        setAduFit({ ...r, _key: selected });
+        // reconcile the map to this exact result -> a tapped lot never stays orange when the fit says it doesn't fit
+        const key = String(selected);
+        if (["fits", "no-fit", "not-eligible", "needs-check"].includes(r.status)) {
+          fitCacheRef.current.set(key, { status: r.status, color: r.status === "fits" ? r.color : null });
+          persistFits();
+          const lyr = idToLayer.current[key];
+          if (lyr && !flagsRef.current[key]) {
+            lyr.feature.properties._fitStatus = r.status;
+            lyr.feature.properties._fitColor = r.status === "fits" ? r.color : null;
+            lyr.setStyle(styleFor(lyr.feature, settingsRef.current));
+          }
+        }
+      })
       .catch((e) => { if (alive) setAduFit({ status: "error", reason: String(e?.message || e), _key: selected }); })
       .finally(() => { if (alive) setAduLoading(false); });
     return () => { alive = false; };
