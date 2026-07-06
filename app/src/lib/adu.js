@@ -29,10 +29,14 @@ export const KEARNS_PROFILE = {
   // Add those as CITY_PROFILES when their setbacks are verified; the cap then auto-applies per selected city.
 };
 
-// Business practice (not code): the crew's own placement rules.
+// Separation between the ADU and the main house used for the FIT test = the legal/physical minimum only.
+// It is NOT the crew's back-in/crane maneuvering room: some builders stick-build the ADU in place, so delivery
+// method (drive-in vs crane vs build) is downstream logistics, not a reason a lot doesn't "fit". Keeping the fit at
+// the legal minimum is what makes it honest across every builder type. (backinMinSideGapFt kept for future access
+// notes; it does NOT gate the fit.)
 export const BUSINESS_OVERLAY = {
-  houseSeparationFt: 20,     // Gavin's rule (legal min is 6) — crane/access room
-  backinMinSideGapFt: 16,    // side-yard width to back a ~14ft unit in vs. crane it
+  houseSeparationFt: 6,      // legal/physical min between detached structures (verify locally) — the fit gate
+  backinMinSideGapFt: 16,    // side-yard width to back a ~14ft unit in vs. crane it (logistics note, not a fit gate)
 };
 
 // City profiles the owner can switch between (the master dropdown). Add cities as the business expands.
@@ -55,7 +59,7 @@ export const RULE_OPTIONS = {
 // ---- Per-jurisdiction rule registry (auto-applied by the parcel's city/county) ----
 // Bump when any profile below changes so the fit cache re-judges. Rules are VERIFIED per city, never guessed;
 // a city not listed here falls back to its county baseline and is flagged "unverified" in the UI.
-export const JURISDICTIONS_VERSION = "utah-slco-2026-07-04g";
+export const JURISDICTIONS_VERSION = "utah-slco-2026-07-06a";
 
 // Salt Lake County ordinance = the baseline for all unincorporated SLCo (Kearns + the metro townships).
 export const COUNTY_BASELINES = { "Salt Lake County": KEARNS_PROFILE };
