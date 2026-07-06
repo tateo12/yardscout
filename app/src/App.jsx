@@ -897,19 +897,21 @@ export default function App({ profile, signOut } = {}) {
     if (top === "Utah County") return "Utah Valley";
     return top ? top.replace(/ County$/, "") : "Wasatch Front";
   }, [features]);
-  const selHouseSqft = sel?.BLDG_SQFT || 0;   // assessor finished area, incl. finished basement
   const selOwner = useMemo(() => {
     void ownerVer;   // re-read the ref when owner data lands (batch enrich or on-demand fetch)
     return selected != null ? freshOwner(ownerCacheRef.current, String(selected)) : null;
   }, [selected, ownerVer]);
+  // House size: prefer the county assessor's living area (from owner data) over UGRC BLDG_SQFT, which is unreliable for
+  // Utah parcels (e.g. returns 132 for a real home). Fall back to BLDG_SQFT, then 0/unknown.
+  const houseSqft = selOwner?.sqft || sel?.BLDG_SQFT || 0;
   // What the city's %-of-primary cap works out to for THIS home. Denominator: cities whose code counts the basement
   // (capBasement:"included") use total sqft; otherwise prefer the owner record's EXACT above-grade sqft (one floor),
   // falling back to a conservative haircut of total only when above-grade isn't loaded yet.
   const selAboveGrade = selOwner?.aboveGradeSqft || 0;
   const selCapDenom = !selJuris ? 0
-    : selJuris.profile.capBasement === "included" ? selHouseSqft
+    : selJuris.profile.capBasement === "included" ? houseSqft
     : selAboveGrade > 0 ? selAboveGrade
-    : selHouseSqft * PRIMARY_ABOVEGRADE_FACTOR;
+    : houseSqft * PRIMARY_ABOVEGRADE_FACTOR;
   const selEffCap = selJuris ? aduSizeCap(selJuris.profile, selCapDenom) : null;
   const selEffCapLabel = !selJuris ? ""
     : selEffCap != null ? `~${Math.round(selEffCap).toLocaleString()} sq ft`
@@ -971,7 +973,7 @@ export default function App({ profile, signOut } = {}) {
                   <div><span>Side setback</span><b>{selJuris.profile.sideFt} ft</b></div>
                   <div><span>Rear setback</span><b>{selJuris.profile.rearFt} ft</b></div>
                   <div><span>Behind house front</span><b>{selJuris.profile.frontBehindFacadeFt} ft</b></div>
-                  <div><span>House size</span><b>{selHouseSqft > 0 ? `${selHouseSqft.toLocaleString()} sq ft` : "unknown"}</b></div>
+                  <div><span>House size</span><b>{houseSqft > 0 ? `${houseSqft.toLocaleString()} sq ft` : "unknown"}</b></div>
                   <div><span>Max ADU size</span><b>{sizeCapLabel(selJuris.profile)}</b></div>
                   <div><span>Max ADU here</span><b>{selEffCapLabel}</b></div>
                   <div><span>Off the house</span><b>{aduOverlay.houseSeparationFt} ft</b></div>
@@ -985,8 +987,8 @@ export default function App({ profile, signOut } = {}) {
               )}
               <div className="readout">
                 <div><b>{sel.PARCEL_ACRES}</b><span>acres</span></div>
-                <div><b>{(sel.BLDG_SQFT || 0).toLocaleString()}</b><span>house sqft</span></div>
-                <div><b>{Math.round((sel.PARCEL_ACRES || 0) * SQFT_PER_ACRE - (sel.BLDG_SQFT || 0)).toLocaleString()}</b><span>open sqft</span></div>
+                <div><b>{houseSqft > 0 ? houseSqft.toLocaleString() : "—"}</b><span>house sqft</span></div>
+                <div><b>{Math.max(0, Math.round((sel.PARCEL_ACRES || 0) * SQFT_PER_ACRE - houseSqft)).toLocaleString()}</b><span>open sqft</span></div>
               </div>
               {selOwner && (
                 <div className="owner">
