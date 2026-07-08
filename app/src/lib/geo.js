@@ -105,6 +105,30 @@ export async function fetchParcelCenter(parcelId, county) {
   return { lat, lng };
 }
 
+// Fetch geometry (+ the fields the fit engine needs) for specific parcels by id, so the citywide scan can run
+// the REAL fit engine on candidates (the scan itself pulls no geometry). Returns Map(PARCEL_ID -> geojson feature).
+export async function fetchParcelsGeom(county, ids, { chunk = 100, signal } = {}) {
+  const layer = parcelLayer(county);
+  const uniq = [...new Set((ids || []).filter(Boolean).map(String))];
+  const out = new Map();
+  for (let i = 0; i < uniq.length; i += chunk) {
+    if (signal?.aborted) break;
+    const list = uniq.slice(i, i + chunk).map((id) => `'${id.replace(/'/g, "")}'`).join(",");
+    const body = new URLSearchParams({
+      where: `PARCEL_ID IN (${list})`,
+      outFields: "PARCEL_ID,PARCEL_ADD,PARCEL_CITY,COUNTY_NAME,PARCEL_ACRES,BLDG_SQFT,BUILT_YR",
+      returnGeometry: "true", outSR: "4326", f: "geojson",
+    });
+    try {
+      const r = await fetch(`${layer}/query`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body, signal });
+      if (!r.ok) continue;
+      const j = await r.json();
+      for (const f of j.features || []) { const id = f.properties?.PARCEL_ID; if (id != null) out.set(String(id), f); }
+    } catch { /* skip chunk, best-effort */ }
+  }
+  return out;
+}
+
 export async function fetchBuildings(bbox) {
   return esriGeojson(LAYERS.buildings, { geometry: bboxStr(bbox), where: "1=1", outFields: "OBJECTID,TYPE,SRC_YEAR" });
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared, loadActivities, logActivity, deleteActivity, updateFollowUp } from "./lib/data";
-import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership, fetchUtahOwnership, fetchDavisOwnership, fetchCityParcels, fetchParcelCenter } from "./lib/geo";
+import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership, fetchUtahOwnership, fetchDavisOwnership, fetchCityParcels, fetchParcelCenter, fetchParcelsGeom } from "./lib/geo";
 import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS, resolveJurisdiction, JURISDICTIONS_VERSION } from "./lib/adu";
 import { aduSizeCap, PRIMARY_ABOVEGRADE_FACTOR } from "./lib/fit";
 import { toOwnerRecord, toOwnerRecordLIR, toOwnerRecordUC, toOwnerRecordDavis, groupPortfolios, isEntityName } from "./lib/owner";
@@ -41,7 +41,8 @@ const SCAN_COUNTIES = [
 ];
 const citiesForCounty = (county) => (SCAN_COUNTIES.find((c) => c.name === county) || SCAN_COUNTIES[0]).cities;
 const SCAN_LOT_FLOOR = 4000;   // fallback min lot for cities whose ADU code sets no minimum (keeps no-yard lots out)
-const SCAN_OPEN_MIN = 1500;    // approx open backyard (lot minus house) needed to place a unit + setbacks
+const SCAN_OPEN_MIN = 1500;    // approx open backyard (lot minus house) to be a fit-check candidate
+const FIT_CHECK_MAX = 300;     // run the real fit engine on the top-N candidates by equity (bounded per scan)
 
 // unit + scoring (open-space from parcel attributes; access/crane is the footprint pass)
 const SQFT_PER_ACRE = 43560;
@@ -598,8 +599,9 @@ export default function App({ profile, signOut } = {}) {
       // Best practice for a bounded-but-large dataset: no arbitrary cap — page through everything, enrich in
       // batches with BOUNDED CONCURRENCY, stream eligible leads as they land, group all owners at the end.
       const ids = parcels.map((p) => String(p.PARCEL_ID));
-      const seenAddr = new Set();   // one lead per situs address (counties record multiple parcels per home)
+      const seenAddr = new Set();   // one candidate per situs address (counties record multiple parcels per home)
       const addrKey = (p) => (p.PARCEL_ADD ? String(p.PARCEL_ADD).toUpperCase().replace(/[.,#]/g, " ").replace(/\s+/g, " ").trim() : "#" + p.PARCEL_ID);
+      const candidates = [];        // size-eligible homes, deduped by address — fed to the REAL fit engine below
       const CHUNK = 200, CONC = 5;
       let next = 0, done = 0;
       const worker = async () => {
@@ -607,23 +609,48 @@ export default function App({ profile, signOut } = {}) {
           const chunkIds = ids.slice(next, (next += CHUNK));
           await enrichChunk(chunkIds);
           if (controller.signal.aborted) return;
-          const eligRows = [];
           for (const id of chunkIds) {
             const p = parcelById.get(id); if (!p) continue;
             const item = buildItem(p, isEligible(p));
             ownerItems.push(item);
-            if (item.eligible) { const k = addrKey(p); if (!seenAddr.has(k)) { seenAddr.add(k); eligRows.push(item); } }
+            if (item.eligible) { const k = addrKey(p); if (!seenAddr.has(k)) { seenAddr.add(k); candidates.push(item); } }
           }
-          if (eligRows.length) setLeads((prev) => [...prev, ...eligRows]);
           done += chunkIds.length;
-          setScanMsg(`Scanned ${done.toLocaleString()} / ${ids.length.toLocaleString()} homes in ${city}…`);
+          setScanMsg(`Looking up owners: ${done.toLocaleString()} / ${ids.length.toLocaleString()} homes…`);
         }
       };
       await Promise.all(Array.from({ length: CONC }, worker));
       if (controller.signal.aborted) return;
-      // investors with 2+ homes here (>=1 ADU-eligible) — grouped over EVERY home, not just the eligible ones
+      // investors with 2+ homes here (>=1 ADU-eligible) — grouped over EVERY home
       setLeadOwners(groupPortfolios(ownerItems));
-      setScanMsg(`${ids.length.toLocaleString()} homes in ${city} · ${seenAddr.size.toLocaleString()} candidates (backyard big enough; confirm fit per lot).`);
+
+      // PHASE 2 — run the REAL fit engine (footprints + setbacks + placement, same as the map) on the candidates,
+      // highest-equity first, and stream in ONLY the homes that actually fit. Bounded so a big city stays sane.
+      const rank = { hot: 0, warm: 1, cool: 2 };
+      candidates.sort((a, b) => (rank[a.tier] ?? 3) - (rank[b.tier] ?? 3) || (b.marketValue || 0) - (a.marketValue || 0));
+      const toCheck = candidates.slice(0, FIT_CHECK_MAX);
+      setScanMsg(`Checking which of the top ${toCheck.length.toLocaleString()} actually fit an ADU…`);
+      const geom = await fetchParcelsGeom(county, toCheck.map((c) => c.parcelId), { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      let fnext = 0, fdone = 0, found = 0;
+      const fitWorker = async () => {
+        while (fnext < toCheck.length && !controller.signal.aborted) {
+          const cand = toCheck[fnext++];
+          const feat = geom.get(cand.parcelId);
+          fdone++;
+          if (feat?.geometry) {
+            try {
+              const r = await computeParcelFit(feat, { models: ADU_MODELS, profile, overlay: aduOverlay });
+              if (controller.signal.aborted) return;
+              if (r.status === "fits") { found++; setLeads((prev) => [...prev, { ...cand, fits: true, clearanceFt: r.best?.clearanceFt ?? null }]); }
+            } catch { /* skip this lot */ }
+          }
+          if (fdone % 10 === 0 || fdone === toCheck.length) setScanMsg(`Checked ${fdone.toLocaleString()} / ${toCheck.length.toLocaleString()} · ${found.toLocaleString()} fit so far…`);
+        }
+      };
+      await Promise.all(Array.from({ length: 6 }, fitWorker));
+      if (controller.signal.aborted) return;
+      setScanMsg(`${found.toLocaleString()} homes that fit an ADU in ${city} (checked the top ${toCheck.length.toLocaleString()} by equity).`);
     } catch (e) {
       if (!controller.signal.aborted) setScanMsg(`Scan failed: ${e?.message || e}`);
     } finally {
@@ -1410,9 +1437,7 @@ export default function App({ profile, signOut } = {}) {
                 ? <button className="logbtn" onClick={cancelScan}>Cancel</button>
                 : <button className="logbtn" onClick={() => runCityScan(scanCounty, scanCity)}>Scan</button>}
             </div>
-            <div className="scanhint">{scanCounty === "Davis County"
-              ? "Davis cities use a baseline ADU rule (city ordinances not yet verified) plus a real-backyard check."
-              : `Uses ${scanCity}'s own ADU rule (detached allowed + min lot) and keeps homes with a real backyard.`} Tap a lead to see it on the map.</div>
+            <div className="scanhint">Runs the real fit engine (footprints + setbacks + placement) on the top candidates by equity and lists the homes an ADU <b>actually fits</b>{scanCounty === "Davis County" ? ", using a baseline rule for Davis cities" : `, using ${scanCity}'s ADU rule`}. Tap a lead to see it on the map.</div>
             {scanMsg && <div className="scanmsg">{scanBusy && <span className="spin sm" />}{scanMsg}</div>}
             {leads.length > 0 && (
               <div className="scanfilters">
