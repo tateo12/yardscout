@@ -200,6 +200,13 @@ const flagIcon = (color, h) => {
   });
 };
 
+// distinct pin dropped on the currently-selected house so you can tell which lot you're looking at
+const selPinIcon = L.divIcon({
+  className: "selpin",
+  html: '<svg viewBox="0 0 24 32" width="30" height="40"><path d="M12 1C6.2 1 1.5 5.7 1.5 11.5 1.5 19 12 31 12 31S22.5 19 22.5 11.5C22.5 5.7 17.8 1 12 1Z" fill="#2563eb" stroke="#fff" stroke-width="2"/><circle cx="12" cy="11.5" r="4" fill="#fff"/></svg>',
+  iconSize: [30, 40], iconAnchor: [15, 38],
+});
+
 const Icon = ({ name }) => {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
   if (name === "map")
@@ -303,6 +310,7 @@ export default function App({ profile, signOut } = {}) {
   const markerByKey = useRef({});
   const idToLayer = useRef({});
   const pendingSelectRef = useRef(null);   // parcel to auto-select once it loads (from a city-scan/portfolio "show on map")
+  const selMarkerRef = useRef(null);        // pin dropped on the selected house
   const knocksRef = useRef({});
   const flagsRef = useRef({});
   const dirtyRef = useRef(new Set());   // customer keys with an unsaved/in-flight edit — preserved across realtime reloads
@@ -916,6 +924,16 @@ export default function App({ profile, signOut } = {}) {
   }, [refreshing]);
 
   useEffect(() => { if (tab === "map") setTimeout(() => mapRef.current?.invalidateSize(), 0); }, [tab]);
+
+  // drop a pin on the selected house so it's obvious which lot you're looking at (survives polygon restyles)
+  useEffect(() => {
+    const map = mapRef.current; if (!map) return;
+    if (selMarkerRef.current) { map.removeLayer(selMarkerRef.current); selMarkerRef.current = null; }
+    const lyr = selected != null ? idToLayer.current[selected] : null;
+    if (lyr) {
+      selMarkerRef.current = L.marker(lyr.getBounds().getCenter(), { icon: selPinIcon, interactive: false, zIndexOffset: 2000 }).addTo(map);
+    }
+  }, [selected, features]);
 
   // lazy-load model-viewer the first time the Trailer tab opens
   useEffect(() => { if (tab === "trailer" && !arReady) import("@google/model-viewer").then(() => setArReady(true)); }, [tab, arReady]);
