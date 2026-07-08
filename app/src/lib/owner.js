@@ -220,15 +220,25 @@ export function toOwnerRecordLIR(a, now = new Date(), fetchedAt = Date.now()) {
 // --- portfolio detection -----------------------------------------------------
 // Cluster enriched parcels by owner so one landlord holding several ADU-viable homes surfaces as a single lead.
 // Normalize the owner name so "SMITH, JOHN - TRUSTEE", "SMITH JOHN", and "Smith, John (MORE)" group together.
+// County placeholder names that are NOT a real identity — never group parcels on these.
+const OWNER_PLACEHOLDERS = /\bNOT IDENTIFIED\b|\bUNKNOWN\b|\bNONE\b/;
 export function normOwnerKey(name) {
-  return String(name || "")
+  const k = String(name || "")
     .toUpperCase()
+    .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ")   // trailing recording dates
     .replace(/\bTRUSTEES?\b/g, " ")
     .replace(/\bET AL\b/g, " ")
     .replace(/\(MORE\)/g, " ")
-    .replace(/[.,\-&]/g, " ")
+    .replace(/[.,\-&()]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  if (!k || OWNER_PLACEHOLDERS.test(k)) return "";                    // placeholder, not a real owner
+  if (/^(TRUST|TRUSTEE|OWNER|ESTATE|LLC|THE)$/.test(k)) return "";    // bare generic term
+  return k;
+}
+// normalize a mailing address for matching (investors mail all their lots to one address)
+export function normMail(s) {
+  return String(s || "").toUpperCase().replace(/[.,#]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 const TIER_RANK = { hot: 3, warm: 2, cool: 1 };
@@ -253,8 +263,11 @@ function dedupeParcels(parcels) {
 export function groupPortfolios(items = []) {
   const map = new Map();
   for (const it of items) {
-    const key = normOwnerKey(it.ownerName);
-    if (!key) continue;
+    const nk = normOwnerKey(it.ownerName);
+    if (!nk) continue;                 // placeholder / junk owner name
+    const mk = normMail(it.mailingAddr);
+    if (!mk) continue;                 // no mailing address -> can't confirm same owner, don't group
+    const key = nk + "||" + mk;        // same owner name AND same mailing address
     let g = map.get(key);
     if (!g) {
       g = { key, owner: it.ownerName, mailingAddr: it.mailingAddr || null, occupancy: it.occupancy || "unknown",

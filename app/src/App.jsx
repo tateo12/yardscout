@@ -257,7 +257,7 @@ function PortfolioRow({ p, onFly }) {
   return (
     <div className="portrow">
       <button className="porthd" onClick={() => setOpen((o) => !o)}>
-        <span className="portname">{p.owner}</span>
+        <span className="portname">{ownerDisplay(p.owner) || p.owner}</span>
         <span className="portmeta">{p.count} homes · {p.fitCount} fit</span>
         {p.topTier && <span className="porttier" style={{ background: PORT_TIER_COLOR[p.topTier] || "#8a8477" }}>{p.topTier}</span>}
         <span className="portchev">{open ? "▾" : "▸"}</span>
