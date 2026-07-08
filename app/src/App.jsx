@@ -42,7 +42,6 @@ const SCAN_COUNTIES = [
 const citiesForCounty = (county) => (SCAN_COUNTIES.find((c) => c.name === county) || SCAN_COUNTIES[0]).cities;
 const SCAN_LOT_FLOOR = 4000;   // fallback min lot for cities whose ADU code sets no minimum (keeps no-yard lots out)
 const SCAN_OPEN_MIN = 1500;    // approx open backyard (lot minus house) needed to place a unit + setbacks
-const SCAN_ENRICH_CAP = 2500;  // max owner lookups per scan (politeness + speed); enrich biggest lots first
 
 // unit + scoring (open-space from parcel attributes; access/crane is the footprint pass)
 const SQFT_PER_ACRE = 43560;
@@ -377,6 +376,7 @@ export default function App({ profile, signOut } = {}) {
   const [leads, setLeads] = useState([]);                 // scanned lead rows for leadCity
   const [leadCity, setLeadCity] = useState("");
   const [leadView, setLeadView] = useState("list");        // "list" | "portfolio"
+  const [leadOwners, setLeadOwners] = useState([]);        // investors with 2+ homes in the scanned city (grouped at scan end)
   const [leadFilter, setLeadFilter] = useState({ owner: "all", tier: "all" });
   const scanAbort = useRef(null);
   const [pull, setPull] = useState(0);
@@ -552,43 +552,39 @@ export default function App({ profile, signOut } = {}) {
     if (scanAbort.current) scanAbort.current.abort();
     const controller = new AbortController();
     scanAbort.current = controller;
-    setScanBusy(true); setLeads([]); setLeadCity(city); setLeadView("list");
+    setScanBusy(true); setLeads([]); setLeadOwners([]); setLeadCity(city); setLeadView("list");
     try {
       const profile = resolveJurisdiction({ city, county }).profile;
       if (profile.detachedAllowed === false) { setScanMsg(`${city} bans detached ADUs — no backyard candidates.`); setScanBusy(false); return; }
       setScanMsg("Loading parcels…");
       const parcels = await fetchCityParcels(county, city, { signal: controller.signal, onProgress: (n) => setScanMsg(`Loaded ${n.toLocaleString()} parcels…`) });
-      const cityMin = profile.minLotSqft || 0;   // the city's own ADU min-lot rule drives eligibility
-      // eligible = actual house + meets the city's min lot + a real backyard (lot minus house footprint)
-      let eligible = parcels.filter((p) => {
+      if (controller.signal.aborted) return;
+      const cityMin = profile.minLotSqft || 0;   // the city's own ADU min-lot rule
+      // an ADU-eligible LEAD = actual house + meets the city's min lot + a real backyard (lot minus house footprint)
+      const isEligible = (p) => {
         const hasHome = (Number(p.BLDG_SQFT) || 0) > 0 || (Number(p.BUILT_YR) || 0) > 0;
         if (!hasHome) return false;
         const lot = (Number(p.PARCEL_ACRES) || 0) * 43560;
         if (lot < Math.max(cityMin, SCAN_LOT_FLOOR)) return false;
         return lot - (Number(p.BLDG_SQFT) || 0) >= SCAN_OPEN_MIN;
-      });
-      eligible.sort((a, b) => (Number(b.PARCEL_ACRES) || 0) - (Number(a.PARCEL_ACRES) || 0));  // biggest backyards first
-      const capped = eligible.length > SCAN_ENRICH_CAP;
-      if (capped) eligible = eligible.slice(0, SCAN_ENRICH_CAP);
-      const ids = eligible.map((p) => String(p.PARCEL_ID));
-      const parcelById = new Map(eligible.map((p) => [String(p.PARCEL_ID), p]));
+      };
+      const parcelById = new Map(parcels.map((p) => [String(p.PARCEL_ID), p]));
       const recs = new Map();
-      const WAVE = 300;
-      // per-county owner enrichment (mirrors the map view's routing): SLCo assessor (tenure) / Utah OwnerParcel
-      // (vesting-year tenure) / Davis county GIS (name+mailing, no tenure). LIR fallback when a service misses a parcel.
-      const enrichWave = async (waveIds) => {
+      const ownerItems = [];   // EVERY home w/ its owner — for the "investors with 2+ in this city" grouping
+      // per-county owner enrichment of one chunk (mirrors the map view's routing); LIR fallback when a service misses.
+      const enrichChunk = async (chunkIds) => {
         if (county === "Utah County") {
-          let raw = new Map(); try { raw = await fetchUtahOwnership(waveIds, { signal: controller.signal }); } catch { raw = new Map(); }
-          for (const id of waveIds) { const a = raw.get(id); recs.set(id, a ? toOwnerRecordUC(a) : toOwnerRecordLIR(parcelById.get(id) || {})); }
+          let raw = new Map(); try { raw = await fetchUtahOwnership(chunkIds, { signal: controller.signal }); } catch { raw = new Map(); }
+          for (const id of chunkIds) { const a = raw.get(id); recs.set(id, a ? toOwnerRecordUC(a) : toOwnerRecordLIR(parcelById.get(id) || {})); }
         } else if (county === "Davis County") {
-          let raw = new Map(); try { raw = await fetchDavisOwnership(waveIds, { signal: controller.signal }); } catch { raw = new Map(); }
-          for (const id of waveIds) { const a = raw.get(id); const p = parcelById.get(id) || {}; recs.set(id, a ? toOwnerRecordDavis(a, p) : toOwnerRecordLIR(p)); }
+          let raw = new Map(); try { raw = await fetchDavisOwnership(chunkIds, { signal: controller.signal }); } catch { raw = new Map(); }
+          for (const id of chunkIds) { const a = raw.get(id); const p = parcelById.get(id) || {}; recs.set(id, a ? toOwnerRecordDavis(a, p) : toOwnerRecordLIR(p)); }
         } else {
-          const raw = await fetchOwnership(waveIds, { signal: controller.signal });
-          raw.forEach((attrs, id) => recs.set(String(id), toOwnerRecord(attrs)));
+          let raw = new Map(); try { raw = await fetchOwnership(chunkIds, { signal: controller.signal }); } catch { raw = new Map(); }
+          for (const id of chunkIds) { const a = raw.get(id); recs.set(id, a ? toOwnerRecord(a) : toOwnerRecordLIR(parcelById.get(id) || {})); }
         }
       };
-      const buildRow = (p) => {
+      const buildItem = (p, eligible) => {
         const id = String(p.PARCEL_ID); const rec = recs.get(id); const a = Number(p.PARCEL_ACRES) || 0;
         return {
           parcelId: id, address: p.PARCEL_ADD, city: p.PARCEL_CITY, county: p.COUNTY_NAME,
@@ -596,20 +592,37 @@ export default function App({ profile, signOut } = {}) {
           ownerName: rec?.ownerName || null, mailingAddr: rec?.mailingAddr || null,
           occupancy: rec?.occupancy || "unknown", tier: rec?.tier || null,
           marketValue: rec?.marketValue || p.TOTAL_MKT_VALUE || null,
-          tenureYrs: rec?.tenureYrs ?? null, isEntity: isEntityName(rec?.ownerName), fits: true,
+          tenureYrs: rec?.tenureYrs ?? null, isEntity: isEntityName(rec?.ownerName), eligible, fits: eligible,
         };
       };
-      // stream results in: append each enriched wave to the list so homes appear as they're found
-      for (let i = 0; i < ids.length; i += WAVE) {
-        if (controller.signal.aborted) return;
-        await enrichWave(ids.slice(i, i + WAVE));
-        if (controller.signal.aborted) return;   // a newer scan / cancel superseded this one
-        const waveRows = eligible.slice(i, i + WAVE).map(buildRow);
-        setLeads((prev) => [...prev, ...waveRows]);
-        setScanMsg(`Found ${Math.min(i + WAVE, ids.length).toLocaleString()} of ${ids.length.toLocaleString()} in ${city}…`);
-      }
+      // Best practice for a bounded-but-large dataset: no arbitrary cap — page through everything, enrich in
+      // batches with BOUNDED CONCURRENCY, stream eligible leads as they land, group all owners at the end.
+      const ids = parcels.map((p) => String(p.PARCEL_ID));
+      const CHUNK = 200, CONC = 5;
+      let next = 0, done = 0;
+      const worker = async () => {
+        while (next < ids.length && !controller.signal.aborted) {
+          const chunkIds = ids.slice(next, (next += CHUNK));
+          await enrichChunk(chunkIds);
+          if (controller.signal.aborted) return;
+          const eligRows = [];
+          for (const id of chunkIds) {
+            const p = parcelById.get(id); if (!p) continue;
+            const item = buildItem(p, isEligible(p));
+            ownerItems.push(item);
+            if (item.eligible) eligRows.push(item);
+          }
+          if (eligRows.length) setLeads((prev) => [...prev, ...eligRows]);
+          done += chunkIds.length;
+          setScanMsg(`Scanned ${done.toLocaleString()} / ${ids.length.toLocaleString()} homes in ${city}…`);
+        }
+      };
+      await Promise.all(Array.from({ length: CONC }, worker));
       if (controller.signal.aborted) return;
-      setScanMsg(`${ids.length.toLocaleString()} eligible leads in ${city}${capped ? ` (top ${SCAN_ENRICH_CAP.toLocaleString()} biggest lots)` : ""}.`);
+      // investors with 2+ homes here (>=1 ADU-eligible) — grouped over EVERY home, not just the eligible ones
+      setLeadOwners(groupPortfolios(ownerItems));
+      const elig = ownerItems.filter((i) => i.eligible).length;
+      setScanMsg(`${ids.length.toLocaleString()} homes scanned in ${city} · ${elig.toLocaleString()} ADU-eligible.`);
     } catch (e) {
       if (!controller.signal.aborted) setScanMsg(`Scan failed: ${e?.message || e}`);
     } finally {
@@ -628,8 +641,6 @@ export default function App({ profile, signOut } = {}) {
     return true;
   }).sort((a, b) => (TIER_SORT[a.tier] ?? 3) - (TIER_SORT[b.tier] ?? 3) || (b.marketValue || 0) - (a.marketValue || 0)),
   [leads, leadFilter.owner, leadFilter.tier]);
-
-  const leadPortfolios = useMemo(() => groupPortfolios(filteredLeads), [filteredLeads]);
 
   const exportLeadsCsv = () => {
     const cols = [["Owner", "ownerName"], ["Mailing address", "mailingAddr"], ["Property", "address"], ["City", "city"],
@@ -1404,29 +1415,31 @@ export default function App({ profile, signOut } = {}) {
             {scanMsg && <div className="scanmsg">{scanBusy && <span className="spin sm" />}{scanMsg}</div>}
             {leads.length > 0 && (
               <div className="scanfilters">
-                <select value={leadFilter.owner} onChange={(e) => setLeadFilter((f) => ({ ...f, owner: e.target.value }))}>
-                  <option value="all">All owners</option>
-                  <option value="owner-occupant">Owner-occupant</option>
-                  <option value="investor">Investor</option>
-                  <option value="entity">LLC / entity</option>
-                </select>
-                <select value={leadFilter.tier} onChange={(e) => setLeadFilter((f) => ({ ...f, tier: e.target.value }))}>
-                  <option value="all">All equity</option>
-                  <option value="hot">Hot</option>
-                  <option value="warm">Warm</option>
-                  <option value="cool">Cool</option>
-                </select>
                 <div className="leadseg">
                   <button className={leadView === "list" ? "on" : ""} onClick={() => setLeadView("list")}>Leads</button>
-                  <button className={leadView === "portfolio" ? "on" : ""} onClick={() => setLeadView("portfolio")}>Owners ({leadPortfolios.length})</button>
+                  <button className={leadView === "portfolio" ? "on" : ""} onClick={() => setLeadView("portfolio")}>Owners ({leadOwners.length})</button>
                 </div>
-                <button className="logbtn" onClick={exportLeadsCsv}>Export CSV ({filteredLeads.length})</button>
+                {leadView === "list" && (<>
+                  <select value={leadFilter.owner} onChange={(e) => setLeadFilter((f) => ({ ...f, owner: e.target.value }))}>
+                    <option value="all">All owners</option>
+                    <option value="owner-occupant">Owner-occupant</option>
+                    <option value="investor">Investor</option>
+                    <option value="entity">LLC / entity</option>
+                  </select>
+                  <select value={leadFilter.tier} onChange={(e) => setLeadFilter((f) => ({ ...f, tier: e.target.value }))}>
+                    <option value="all">All equity</option>
+                    <option value="hot">Hot</option>
+                    <option value="warm">Warm</option>
+                    <option value="cool">Cool</option>
+                  </select>
+                  <button className="logbtn" onClick={exportLeadsCsv}>Export CSV ({filteredLeads.length})</button>
+                </>)}
               </div>
             )}
             <div className="portlist">
               {leads.length === 0 && !scanBusy && <div className="empty">Pick a county and city, then <b>Scan</b> to build a lead list of ADU-eligible homes.</div>}
               {leads.length > 0 && (leadView === "portfolio"
-                ? (leadPortfolios.length ? leadPortfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={goToLead} open={openPortKey === p.key} onToggle={() => setOpenPortKey((k) => (k === p.key ? null : p.key))} />) : <div className="empty">No owners hold 2+ of these at the current filters.</div>)
+                ? (leadOwners.length ? leadOwners.map((p) => <PortfolioRow key={p.key} p={p} onFly={goToLead} open={openPortKey === p.key} onToggle={() => setOpenPortKey((k) => (k === p.key ? null : p.key))} />) : <div className="empty">No owner holds 2+ homes with an ADU-eligible lot in {leadCity || "this city"}.</div>)
                 : (filteredLeads.length ? filteredLeads.slice(0, 500).map((l) => (
                     <button key={l.parcelId} className="leadrow" onClick={() => goToLead(l.parcelId, l.county)} title="Show on the map">
                       <span className="leadmain">
