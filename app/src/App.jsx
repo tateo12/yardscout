@@ -1472,7 +1472,7 @@ export default function App({ profile, signOut } = {}) {
                 <button className="logbtn" onClick={exportLeadsCsv}>Export CSV ({filteredLeads.length})</button>
               </div>
             )}
-            <div className="list">
+            <div className="portlist">
               {leads.length === 0 && !scanBusy && <div className="empty">Pick a county and city, then <b>Scan</b> to build a lead list of ADU-eligible homes.</div>}
               {leads.length > 0 && (leadView === "portfolio"
                 ? (leadPortfolios.length ? leadPortfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={goToLead} open={openPortKey === p.key} onToggle={() => setOpenPortKey((k) => (k === p.key ? null : p.key))} />) : <div className="empty">No owners hold 2+ of these at the current filters.</div>)
