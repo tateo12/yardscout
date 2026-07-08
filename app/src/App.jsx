@@ -598,6 +598,8 @@ export default function App({ profile, signOut } = {}) {
       // Best practice for a bounded-but-large dataset: no arbitrary cap — page through everything, enrich in
       // batches with BOUNDED CONCURRENCY, stream eligible leads as they land, group all owners at the end.
       const ids = parcels.map((p) => String(p.PARCEL_ID));
+      const seenAddr = new Set();   // one lead per situs address (counties record multiple parcels per home)
+      const addrKey = (p) => (p.PARCEL_ADD ? String(p.PARCEL_ADD).toUpperCase().replace(/[.,#]/g, " ").replace(/\s+/g, " ").trim() : "#" + p.PARCEL_ID);
       const CHUNK = 200, CONC = 5;
       let next = 0, done = 0;
       const worker = async () => {
@@ -610,7 +612,7 @@ export default function App({ profile, signOut } = {}) {
             const p = parcelById.get(id); if (!p) continue;
             const item = buildItem(p, isEligible(p));
             ownerItems.push(item);
-            if (item.eligible) eligRows.push(item);
+            if (item.eligible) { const k = addrKey(p); if (!seenAddr.has(k)) { seenAddr.add(k); eligRows.push(item); } }
           }
           if (eligRows.length) setLeads((prev) => [...prev, ...eligRows]);
           done += chunkIds.length;
@@ -621,8 +623,7 @@ export default function App({ profile, signOut } = {}) {
       if (controller.signal.aborted) return;
       // investors with 2+ homes here (>=1 ADU-eligible) — grouped over EVERY home, not just the eligible ones
       setLeadOwners(groupPortfolios(ownerItems));
-      const elig = ownerItems.filter((i) => i.eligible).length;
-      setScanMsg(`${ids.length.toLocaleString()} homes scanned in ${city} · ${elig.toLocaleString()} ADU-eligible.`);
+      setScanMsg(`${ids.length.toLocaleString()} homes in ${city} · ${seenAddr.size.toLocaleString()} candidates (backyard big enough; confirm fit per lot).`);
     } catch (e) {
       if (!controller.signal.aborted) setScanMsg(`Scan failed: ${e?.message || e}`);
     } finally {

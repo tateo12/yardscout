@@ -68,12 +68,13 @@ export async function fetchParcels(bbox, where = "PROP_CLASS='Residential'") {
 export async function fetchCityParcels(county, city, { signal, onProgress, page = 2000, maxPages = 60 } = {}) {
   const cityUp = String(city || "").toUpperCase().replace(/'/g, "");
   const layer = parcelLayer(county);
-  const out = [];
+  const byId = new Map();   // dedupe by parcel id (offset paging can repeat rows)
   let offset = 0, more = true, pages = 0;
   while (more && pages < maxPages) {
     const params = new URLSearchParams({
       where: `PROP_CLASS='Residential' AND UPPER(PARCEL_CITY)='${cityUp}'`,
       outFields: "PARCEL_ID,PARCEL_ADD,PARCEL_CITY,COUNTY_NAME,PARCEL_ACRES,BLDG_SQFT,PRIMARY_RES,TOTAL_MKT_VALUE,BUILT_YR",
+      orderByFields: "OBJECTID",   // stable sort so offset pagination doesn't repeat/skip records
       returnGeometry: "false", outSR: "4326", f: "json", resultRecordCount: String(page), resultOffset: String(offset),
     });
     const r = await fetch(`${layer}/query?${params}`, { signal });
@@ -81,12 +82,12 @@ export async function fetchCityParcels(county, city, { signal, onProgress, page 
     const j = await r.json();
     if (j.error) throw new Error(j.error.message);
     const feats = (j.features || []).map((f) => f.attributes);
-    out.push(...feats);
+    for (const a of feats) if (a.PARCEL_ID != null) byId.set(String(a.PARCEL_ID), a);
     more = feats.length >= page;
     offset += page; pages++;
-    onProgress?.(out.length);
+    onProgress?.(byId.size);
   }
-  return out;
+  return [...byId.values()];
 }
 
 // One parcel's centroid by PARCEL_ID (the city scan pulls no geometry, so we fetch it on demand to jump the map there).
