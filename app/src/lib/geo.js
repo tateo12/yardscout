@@ -56,6 +56,31 @@ export async function fetchParcels(bbox, where = "PROP_CLASS='Residential'") {
     outFields: "PARCEL_ID,PARCEL_ADD,PARCEL_CITY,COUNTY_NAME,PARCEL_ACRES,BLDG_SQFT,PRIMARY_RES,TOTAL_MKT_VALUE,BUILT_YR",
   });
 }
+// Pull ALL residential parcels in one city (attributes only, no geometry) for the citywide lead-list scan.
+// Paginated. Case-insensitive city match. onProgress(count) fires per page. Salt Lake County only (LAYERS.parcels).
+export async function fetchCityParcels(city, { signal, onProgress, page = 2000, maxPages = 60 } = {}) {
+  const cityUp = String(city || "").toUpperCase().replace(/'/g, "");
+  const out = [];
+  let offset = 0, more = true, pages = 0;
+  while (more && pages < maxPages) {
+    const params = new URLSearchParams({
+      where: `PROP_CLASS='Residential' AND UPPER(PARCEL_CITY)='${cityUp}'`,
+      outFields: "PARCEL_ID,PARCEL_ADD,PARCEL_CITY,COUNTY_NAME,PARCEL_ACRES,BLDG_SQFT,PRIMARY_RES,TOTAL_MKT_VALUE,BUILT_YR",
+      returnGeometry: "false", outSR: "4326", f: "json", resultRecordCount: String(page), resultOffset: String(offset),
+    });
+    const r = await fetch(`${LAYERS.parcels}/query?${params}`, { signal });
+    if (!r.ok) throw new Error(`city parcels ${r.status}`);
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message);
+    const feats = (j.features || []).map((f) => f.attributes);
+    out.push(...feats);
+    more = feats.length >= page;
+    offset += page; pages++;
+    onProgress?.(out.length);
+  }
+  return out;
+}
+
 export async function fetchBuildings(bbox) {
   return esriGeojson(LAYERS.buildings, { geometry: bboxStr(bbox), where: "1=1", outFields: "OBJECTID,TYPE,SRC_YEAR" });
 }

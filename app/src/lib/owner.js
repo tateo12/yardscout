@@ -22,6 +22,8 @@ export function tenureYears(date, now = new Date()) {
 // Grid addresses dominate Kearns ("5045 W 4985 S"); normalize away punctuation/case for comparison.
 const normAddr = (s) => String(s || "").toUpperCase().replace(/[.,#]/g, " ").replace(/\s+/g, " ").trim();
 const ENTITY = /\b(LLC|L\.?C\.?|INC|CORP|LP|LTD|HOLDINGS|PROPERTIES|PROPERTY|RENTALS?|INVESTMENTS?|CAPITAL|HOMES)\b/;
+// true if the owner name looks like a business/entity (LLC, Inc, Properties, ...) rather than a person
+export const isEntityName = (name) => ENTITY.test(String(name || "").toUpperCase());
 
 // tag: 'owner-occupant' | 'investor' | 'unknown', with a `why` so the UI never overstates certainty.
 export function classifyOccupancy(rec) {

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared, loadActivities, logActivity, deleteActivity, updateFollowUp } from "./lib/data";
-import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership, fetchUtahOwnership, fetchDavisOwnership } from "./lib/geo";
+import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership, fetchUtahOwnership, fetchDavisOwnership, fetchCityParcels } from "./lib/geo";
 import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS, resolveJurisdiction, JURISDICTIONS_VERSION } from "./lib/adu";
 import { aduSizeCap, PRIMARY_ABOVEGRADE_FACTOR } from "./lib/fit";
-import { toOwnerRecord, toOwnerRecordLIR, toOwnerRecordUC, toOwnerRecordDavis, groupPortfolios } from "./lib/owner";
+import { toOwnerRecord, toOwnerRecordLIR, toOwnerRecordUC, toOwnerRecordDavis, groupPortfolios, isEntityName } from "./lib/owner";
 import { sharePdf } from "./lib/share";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -18,6 +18,15 @@ const PARCEL_LAYERS = [
   `${PARCELS_ORG}/Parcels_Utah_LIR/FeatureServer/0/query`,
   `${PARCELS_ORG}/Parcels_Davis_LIR/FeatureServer/0/query`,
 ];
+
+// Salt Lake County cities for the citywide lead-list scan (v1 is SLCo-only: best footprints + tenure data).
+const SL_COUNTY_CITIES = [
+  "Salt Lake City", "West Valley City", "West Jordan", "Sandy", "South Jordan", "Millcreek", "Murray",
+  "Taylorsville", "Draper", "Riverton", "Herriman", "Cottonwood Heights", "Holladay", "South Salt Lake",
+  "Midvale", "Bluffdale", "Kearns", "Magna City", "Copperton", "White City", "Emigration Canyon",
+];
+const SCAN_MIN_LOT_DEFAULT = 7000;   // only lots with a real backyard are ADU targets (also caps scan volume)
+const SCAN_ENRICH_CAP = 2500;        // max owner lookups per scan (politeness + speed); enrich biggest lots first
 
 // unit + scoring (open-space from parcel attributes; access/crane is the footprint pass)
 const SQFT_PER_ACRE = 43560;
@@ -271,7 +280,7 @@ function PortfolioRow({ p, onFly }) {
           <ul className="portparcels">
             {p.parcels.map((pc) => (
               <li key={pc.parcelId}>
-                <button className="portparcel" onClick={() => onFly(pc.parcelId)}>
+                <button className="portparcel" onClick={() => onFly?.(pc.parcelId)} style={onFly ? undefined : { cursor: "default" }}>
                   <span className={"pdot" + (pc.fits ? " fit" : "")} />
                   <span className="paddr">{titleCase(pc.address) || "(no address)"}{pc.city ? `, ${titleCase(pc.city)}` : ""}</span>
                   {pc.marketValue ? <span className="pval">${Math.round(pc.marketValue).toLocaleString()}</span> : null}
@@ -334,6 +343,16 @@ export default function App({ profile, signOut } = {}) {
   const [showRules, setShowRules] = useState(false);   // detail card: expand the jurisdiction's ADU rules
   const [ownerPartial, setOwnerPartial] = useState(false);  // last owner fetch couldn't reach some lots (county server)
   const [showPortfolio, setShowPortfolio] = useState(false);  // portfolio-owner sheet (investors holding multiple lots in view)
+  // ---- citywide lead-list scan (Salt Lake County v1) ----
+  const [cityScanOpen, setCityScanOpen] = useState(false);
+  const [scanCity, setScanCity] = useState(SL_COUNTY_CITIES[0]);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanMsg, setScanMsg] = useState("");
+  const [leads, setLeads] = useState([]);                 // scanned lead rows for leadCity
+  const [leadCity, setLeadCity] = useState("");
+  const [leadView, setLeadView] = useState("list");        // "list" | "portfolio"
+  const [leadFilter, setLeadFilter] = useState({ owner: "all", tier: "all", minLot: SCAN_MIN_LOT_DEFAULT });
+  const scanAbort = useRef(null);
   const [pull, setPull] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const pullRef = useRef(0);
@@ -497,6 +516,82 @@ export default function App({ profile, signOut } = {}) {
     const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
     const a = document.createElement("a");
     a.href = url; a.download = "yardscout-customers.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Citywide lead-list scan: pull all residential parcels in a city, keep the eligible ones (detached allowed +
+  // real backyard lot), enrich owners in waves, and build a filterable/exportable lead list. No per-lot geometry
+  // fit here (that's a tap-level check) — the list is about WHO to target: owner + equity + eligibility.
+  const runCityScan = async (city) => {
+    if (scanAbort.current) scanAbort.current.abort();
+    const controller = new AbortController();
+    scanAbort.current = controller;
+    setScanBusy(true); setLeads([]); setLeadCity(city); setLeadView("list");
+    try {
+      const profile = resolveJurisdiction({ city, county: "Salt Lake County" }).profile;
+      if (profile.detachedAllowed === false) { setScanMsg(`${city} bans detached ADUs — no backyard candidates.`); setScanBusy(false); return; }
+      setScanMsg("Loading parcels…");
+      const parcels = await fetchCityParcels(city, { signal: controller.signal, onProgress: (n) => setScanMsg(`Loaded ${n.toLocaleString()} parcels…`) });
+      const floor = Math.max(leadFilter.minLot || 0, profile.minLotSqft || 0);
+      let eligible = parcels.filter((p) => { const a = Number(p.PARCEL_ACRES) || 0; return a > 0 && a * 43560 >= floor; });
+      eligible.sort((a, b) => (Number(b.PARCEL_ACRES) || 0) - (Number(a.PARCEL_ACRES) || 0));  // biggest backyards first
+      const capped = eligible.length > SCAN_ENRICH_CAP;
+      if (capped) eligible = eligible.slice(0, SCAN_ENRICH_CAP);
+      const ids = eligible.map((p) => String(p.PARCEL_ID));
+      const recs = new Map();
+      const WAVE = 300;
+      for (let i = 0; i < ids.length; i += WAVE) {
+        if (controller.signal.aborted) return;
+        const raw = await fetchOwnership(ids.slice(i, i + WAVE), { signal: controller.signal });
+        if (controller.signal.aborted) return;   // a newer scan / cancel superseded this one
+        raw.forEach((attrs, id) => recs.set(String(id), toOwnerRecord(attrs)));
+        setScanMsg(`Looking up owners ${Math.min(i + WAVE, ids.length).toLocaleString()} / ${ids.length.toLocaleString()}…`);
+      }
+      const rows = eligible.map((p) => {
+        const id = String(p.PARCEL_ID); const rec = recs.get(id); const a = Number(p.PARCEL_ACRES) || 0;
+        return {
+          parcelId: id, address: p.PARCEL_ADD, city: p.PARCEL_CITY, county: p.COUNTY_NAME,
+          lotSqft: a > 0 ? Math.round(a * 43560) : null,
+          ownerName: rec?.ownerName || null, mailingAddr: rec?.mailingAddr || null,
+          occupancy: rec?.occupancy || "unknown", tier: rec?.tier || null,
+          marketValue: rec?.marketValue || p.TOTAL_MKT_VALUE || null,
+          tenureYrs: rec?.tenureYrs ?? null, isEntity: isEntityName(rec?.ownerName), fits: true,
+        };
+      });
+      if (controller.signal.aborted) return;
+      setLeads(rows);
+      setScanMsg(`${rows.length.toLocaleString()} eligible leads in ${city}${capped ? ` (top ${SCAN_ENRICH_CAP.toLocaleString()} biggest lots)` : ""}.`);
+    } catch (e) {
+      if (!controller.signal.aborted) setScanMsg(`Scan failed: ${e?.message || e}`);
+    } finally {
+      // only clear busy if THIS scan is still the active one (a newer scan may have superseded it)
+      if (scanAbort.current === controller) { scanAbort.current = null; setScanBusy(false); }
+    }
+  };
+  const cancelScan = () => { scanAbort.current?.abort(); scanAbort.current = null; setScanBusy(false); setScanMsg("Canceled."); };
+
+  const TIER_SORT = { hot: 0, warm: 1, cool: 2 };
+  const filteredLeads = useMemo(() => leads.filter((l) => {
+    if (l.lotSqft != null && l.lotSqft < (leadFilter.minLot || 0)) return false;   // live-tighten (scan floored at minLot too)
+    if (leadFilter.owner === "owner-occupant" && l.occupancy !== "owner-occupant") return false;
+    if (leadFilter.owner === "investor" && l.occupancy !== "investor") return false;
+    if (leadFilter.owner === "entity" && !l.isEntity) return false;
+    if (leadFilter.tier !== "all" && l.tier !== leadFilter.tier) return false;
+    return true;
+  }).sort((a, b) => (TIER_SORT[a.tier] ?? 3) - (TIER_SORT[b.tier] ?? 3) || (b.marketValue || 0) - (a.marketValue || 0)),
+  [leads, leadFilter.owner, leadFilter.tier, leadFilter.minLot]);
+
+  const leadPortfolios = useMemo(() => groupPortfolios(filteredLeads), [filteredLeads]);
+
+  const exportLeadsCsv = () => {
+    const cols = [["Owner", "ownerName"], ["Mailing address", "mailingAddr"], ["Property", "address"], ["City", "city"],
+      ["Est. value", "marketValue"], ["Occupancy", "occupancy"], ["Equity", "tier"], ["Years owned", "tenureYrs"], ["Lot sqft", "lotSqft"], ["Entity", "isEntity"]];
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lines = [cols.map((c) => c[0]).join(",")];
+    filteredLeads.forEach((l) => lines.push(cols.map((c) => esc(l[c[1]])).join(",")));
+    const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = `yardscout-${(leadCity || "leads").replace(/\s+/g, "-").toLowerCase()}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -1160,7 +1255,65 @@ export default function App({ profile, signOut } = {}) {
               {portfolios.length > 0 && (
                 <button onClick={() => setShowPortfolio(true)} title="Owners holding multiple lots in view">🏘 Portfolio owners ({portfolios.length})</button>
               )}
+              <button onClick={() => setCityScanOpen(true)} title="Build a lead list for a whole city">📋 City lead list</button>
               <button onClick={refreshOwners} title="Reload owner data for this area">↻ Refresh owners</button>
+            </div>
+          )}
+          {cityScanOpen && (
+            <div className="portsheet">
+              <div className="porttop">
+                <div><b>City lead list</b><span className="portcount">Salt Lake County · eligible + owner + equity</span></div>
+                <button className="x" onClick={() => setCityScanOpen(false)} aria-label="Close">×</button>
+              </div>
+              <div className="scanbar">
+                <select value={scanCity} onChange={(e) => setScanCity(e.target.value)} disabled={scanBusy}>
+                  {SL_COUNTY_CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select value={leadFilter.minLot} onChange={(e) => setLeadFilter((f) => ({ ...f, minLot: Number(e.target.value) }))} disabled={scanBusy}>
+                  {[5000, 6000, 7000, 8000, 10000].map((v) => <option key={v} value={v}>{v / 1000}k+ lot</option>)}
+                </select>
+                {scanBusy
+                  ? <button className="logbtn" onClick={cancelScan}>Cancel</button>
+                  : <button className="logbtn" onClick={() => runCityScan(scanCity)}>Scan</button>}
+              </div>
+              {scanMsg && <div className="scanmsg">{scanBusy && <span className="spin sm" />}{scanMsg}</div>}
+              {leads.length > 0 && (
+                <>
+                  <div className="scanfilters">
+                    <select value={leadFilter.owner} onChange={(e) => setLeadFilter((f) => ({ ...f, owner: e.target.value }))}>
+                      <option value="all">All owners</option>
+                      <option value="owner-occupant">Owner-occupant</option>
+                      <option value="investor">Investor</option>
+                      <option value="entity">LLC / entity</option>
+                    </select>
+                    <select value={leadFilter.tier} onChange={(e) => setLeadFilter((f) => ({ ...f, tier: e.target.value }))}>
+                      <option value="all">All equity</option>
+                      <option value="hot">Hot</option>
+                      <option value="warm">Warm</option>
+                      <option value="cool">Cool</option>
+                    </select>
+                    <button className="link" onClick={() => setLeadView((v) => (v === "list" ? "portfolio" : "list"))}>
+                      {leadView === "list" ? `Portfolios (${leadPortfolios.length})` : "All leads"}
+                    </button>
+                    <button className="logbtn" onClick={exportLeadsCsv}>Export CSV ({filteredLeads.length})</button>
+                  </div>
+                  <div className="portlist">
+                    {leadView === "portfolio"
+                      ? (leadPortfolios.length ? leadPortfolios.map((p) => <PortfolioRow key={p.key} p={p} />) : <div className="empty">No owners hold 2+ of these at the current filters.</div>)
+                      : (filteredLeads.length ? filteredLeads.slice(0, 500).map((l) => (
+                          <div key={l.parcelId} className="leadrow">
+                            <span className="leadmain">
+                              <span className="leadname">{l.ownerName ? ownerDisplay(l.ownerName) : "(owner unknown)"}{l.isEntity && <em className="llcbadge">LLC</em>}</span>
+                              <span className="leadaddr">{titleCase(l.address) || "(no address)"}{l.city ? `, ${titleCase(l.city)}` : ""}</span>
+                            </span>
+                            {l.tier && <span className="leadtier" style={{ background: PORT_TIER_COLOR[l.tier] || "#8a8477" }}>{l.tier}</span>}
+                            {l.marketValue ? <span className="pval">${Math.round(l.marketValue).toLocaleString()}</span> : null}
+                          </div>
+                        )) : <div className="empty">No leads at the current filters.</div>)}
+                    {leadView === "list" && filteredLeads.length > 500 && <div className="empty">Showing first 500 of {filteredLeads.length.toLocaleString()}. Export CSV for the full list.</div>}
+                  </div>
+                </>
+              )}
             </div>
           )}
           {showPortfolio && (
