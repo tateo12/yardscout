@@ -286,11 +286,10 @@ function ActivityBlock({ acts = [], nextFollowUp, onLog, onRemove, onFollowUp })
 
 // One portfolio owner in the Portfolio sheet: summary row that expands to their properties.
 const PORT_TIER_COLOR = { hot: "#c4552d", warm: "#c68a2e", cool: "#4f7a99" };
-function PortfolioRow({ p, onFly }) {
-  const [open, setOpen] = useState(false);
+function PortfolioRow({ p, onFly, open, onToggle }) {
   return (
     <div className="portrow">
-      <button className="porthd" onClick={() => setOpen((o) => !o)}>
+      <button className="porthd" onClick={onToggle}>
         <span className="portname">{ownerDisplay(p.owner) || p.owner}</span>
         <span className="portmeta">{p.count} homes · {p.fitCount} fit</span>
         {p.topTier && <span className="porttier" style={{ background: PORT_TIER_COLOR[p.topTier] || "#8a8477" }}>{p.topTier}</span>}
@@ -370,6 +369,7 @@ export default function App({ profile, signOut } = {}) {
   const [showRules, setShowRules] = useState(false);   // detail card: expand the jurisdiction's ADU rules
   const [ownerPartial, setOwnerPartial] = useState(false);  // last owner fetch couldn't reach some lots (county server)
   const [showPortfolio, setShowPortfolio] = useState(false);  // portfolio-owner sheet (investors holding multiple lots in view)
+  const [openPortKey, setOpenPortKey] = useState(null);       // which portfolio owner row is expanded (accordion: one at a time)
   // ---- citywide lead-list scan (Salt Lake County v1) ----
   const [scanCounty, setScanCounty] = useState("Salt Lake County");
   const [scanCity, setScanCity] = useState(SL_COUNTY_CITIES[0]);
@@ -1061,16 +1061,19 @@ export default function App({ profile, signOut } = {}) {
   // and queue the select for when the area loads.
   const goToLead = async (pid, county) => {
     setShowPortfolio(false); setTab("map");
+    // let the (previously hidden) map become visible, fix its size, THEN move — otherwise it moves at the wrong
+    // size, jams interaction, and loads the wrong bbox. setView (not flyTo) avoids animation jank during the load.
+    const move = (center, zoom) => setTimeout(() => { const m = mapRef.current; if (m) { m.invalidateSize(); m.setView(center, zoom); } }, 60);
     const lyr = idToLayer.current[pid];
-    if (lyr && mapRef.current) {
+    if (lyr) {
       setSelected(pid);
-      mapRef.current.flyTo(lyr.getBounds().getCenter(), Math.max(mapRef.current.getZoom(), FIT_ZOOM), { duration: 0.6 });
+      move(lyr.getBounds().getCenter(), Math.max(mapRef.current?.getZoom() || FIT_ZOOM, FIT_ZOOM));
       return;
     }
     pendingSelectRef.current = pid;
     try {
       const c = await fetchParcelCenter(pid, county);
-      if (c && mapRef.current) mapRef.current.setView([c.lat, c.lng], Math.max(FIT_ZOOM, 17));
+      if (c) move([c.lat, c.lng], Math.max(FIT_ZOOM, 17));
       else pendingSelectRef.current = null;
     } catch { pendingSelectRef.current = null; }
   };
@@ -1344,7 +1347,7 @@ export default function App({ profile, signOut } = {}) {
               <div className="portlist">
                 {portfolios.length === 0
                   ? <div className="empty">No multi-property owners in this area yet. Pan to a neighborhood and let owner data load.</div>
-                  : portfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={goToLead} />)}
+                  : portfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={goToLead} open={openPortKey === p.key} onToggle={() => setOpenPortKey((k) => (k === p.key ? null : p.key))} />)}
               </div>
             </div>
           )}
@@ -1472,7 +1475,7 @@ export default function App({ profile, signOut } = {}) {
             <div className="list">
               {leads.length === 0 && !scanBusy && <div className="empty">Pick a county and city, then <b>Scan</b> to build a lead list of ADU-eligible homes.</div>}
               {leads.length > 0 && (leadView === "portfolio"
-                ? (leadPortfolios.length ? leadPortfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={goToLead} />) : <div className="empty">No owners hold 2+ of these at the current filters.</div>)
+                ? (leadPortfolios.length ? leadPortfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={goToLead} open={openPortKey === p.key} onToggle={() => setOpenPortKey((k) => (k === p.key ? null : p.key))} />) : <div className="empty">No owners hold 2+ of these at the current filters.</div>)
                 : (filteredLeads.length ? filteredLeads.slice(0, 500).map((l) => (
                     <button key={l.parcelId} className="leadrow" onClick={() => goToLead(l.parcelId, l.county)} title="Show on the map">
                       <span className="leadmain">

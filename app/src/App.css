@@ -175,7 +175,7 @@
 .custhd { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--card); border-bottom: 1px solid var(--line); }
 .addbtn { border: 0; background: var(--green); color: #fff; font-weight: 700; font-size: 13px; padding: 9px 16px; border-radius: 10px; cursor: pointer; font-family: inherit; }
 .addbtn:active { transform: scale(.97); }
-.list { overflow-y: auto; flex: 1 1 auto; -webkit-overflow-scrolling: touch;
+.list { overflow-y: auto; flex: 1 1 auto; min-height: 0; -webkit-overflow-scrolling: touch;
   display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; padding: 12px; align-content: start; }
 .empty { grid-column: 1 / -1; padding: 40px 26px; color: var(--muted); font-size: 14px; line-height: 1.6; text-align: center; }
 .custcard { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; align-self: start; }
@@ -233,9 +233,10 @@
 .porttop b { font-size: 16px; }
 .portcount { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
 .porttop .x { position: static; border: 0; background: transparent; font-size: 24px; line-height: 1; color: var(--muted); cursor: pointer; }
-.portlist { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
-.portrow { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-.porthd { width: 100%; display: flex; align-items: center; gap: 9px; padding: 12px 13px; border: 0; background: transparent; cursor: pointer; font-family: inherit; text-align: left; }
+.portlist { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
+.portrow { flex: none; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.porthd { width: 100%; display: flex; flex-wrap: nowrap; align-items: center; gap: 9px; padding: 12px 13px; border: 0; background: transparent; cursor: pointer; font-family: inherit; text-align: left; }
+.porthd .portmeta, .porthd .porttier, .porthd .portchev { white-space: nowrap; }
 .portname { flex: 1; min-width: 0; font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .portmeta { flex: none; font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .porttier { flex: none; font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #fff; padding: 2px 7px; border-radius: 999px; }
