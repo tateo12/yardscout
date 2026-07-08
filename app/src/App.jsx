@@ -820,15 +820,6 @@ export default function App({ profile, signOut } = {}) {
     setOwnerVer((v) => v + 1);
   }, []);
 
-  // manual "refresh this area": drop the viewport's cached owner records and re-pull (for stale data or a prior partial load)
-  const refreshOwners = useCallback(() => {
-    const layer = layerRef.current; if (!layer) return;
-    layer.eachLayer((l) => ownerCacheRef.current.delete(l.feature.properties._key));
-    persistOwners();
-    setOwnerPartial(false);
-    computeOwners();
-  }, [computeOwners]);
-
   const loadViewport = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -1307,11 +1298,8 @@ export default function App({ profile, signOut } = {}) {
             <span><i style={{ background: EQ.warm.color }} />Warm</span>
             <span><i style={{ background: EQ.cool.color }} />Lower</span>
           </div>
-          {!zoomedOut && (
-            <div className="ownerctl">
-              {ownerPartial && <span className="ownerctl-warn">Some owner data didn’t load</span>}
-              <button onClick={refreshOwners} title="Reload owner data for this area">↻ Refresh owners</button>
-            </div>
+          {!zoomedOut && ownerPartial && (
+            <div className="ownerctl"><span className="ownerctl-warn">Some owner data didn’t load</span></div>
           )}
           {sel && (
             <div className="detail">
