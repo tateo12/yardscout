@@ -254,6 +254,7 @@
 .scanbar { display: flex; gap: 8px; padding: 12px 14px; background: var(--card); border-bottom: 1px solid var(--line); }
 .scanbar select { flex: 1; min-width: 0; padding: 10px 11px; border: 1px solid var(--line); border-radius: 9px; font-size: 14px; font-family: inherit; background: #fff; color: var(--text); }
 .scanbar .logbtn { flex: 0 0 auto; }
+.scanhint { padding: 8px 14px 12px; font-size: 12px; line-height: 1.4; color: var(--muted); background: var(--card); border-bottom: 1px solid var(--line); }
 .scanmsg { display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 13px; color: var(--muted); background: var(--card); border-bottom: 1px solid var(--line); }
 .scanfilters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; background: var(--card); border-bottom: 1px solid var(--line); }
 .scanfilters select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; font-size: 13px; font-family: inherit; background: #fff; color: var(--text); }

@@ -25,8 +25,9 @@ const SL_COUNTY_CITIES = [
   "Taylorsville", "Draper", "Riverton", "Herriman", "Cottonwood Heights", "Holladay", "South Salt Lake",
   "Midvale", "Bluffdale", "Kearns", "Magna City", "Copperton", "White City", "Emigration Canyon",
 ];
-const SCAN_MIN_LOT_DEFAULT = 7000;   // only lots with a real backyard are ADU targets (also caps scan volume)
-const SCAN_ENRICH_CAP = 2500;        // max owner lookups per scan (politeness + speed); enrich biggest lots first
+const SCAN_LOT_FLOOR = 4000;   // fallback min lot for cities whose ADU code sets no minimum (keeps no-yard lots out)
+const SCAN_OPEN_MIN = 1500;    // approx open backyard (lot minus house) needed to place a unit + setbacks
+const SCAN_ENRICH_CAP = 2500;  // max owner lookups per scan (politeness + speed); enrich biggest lots first
 
 // unit + scoring (open-space from parcel attributes; access/crane is the footprint pass)
 const SQFT_PER_ACRE = 43560;
@@ -351,7 +352,7 @@ export default function App({ profile, signOut } = {}) {
   const [leads, setLeads] = useState([]);                 // scanned lead rows for leadCity
   const [leadCity, setLeadCity] = useState("");
   const [leadView, setLeadView] = useState("list");        // "list" | "portfolio"
-  const [leadFilter, setLeadFilter] = useState({ owner: "all", tier: "all", minLot: SCAN_MIN_LOT_DEFAULT });
+  const [leadFilter, setLeadFilter] = useState({ owner: "all", tier: "all" });
   const scanAbort = useRef(null);
   const [pull, setPull] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -532,12 +533,14 @@ export default function App({ profile, signOut } = {}) {
       if (profile.detachedAllowed === false) { setScanMsg(`${city} bans detached ADUs — no backyard candidates.`); setScanBusy(false); return; }
       setScanMsg("Loading parcels…");
       const parcels = await fetchCityParcels(city, { signal: controller.signal, onProgress: (n) => setScanMsg(`Loaded ${n.toLocaleString()} parcels…`) });
-      const floor = Math.max(leadFilter.minLot || 0, profile.minLotSqft || 0);
-      // eligible = has an actual house (not a vacant lot/sliver) + a real backyard lot
+      const cityMin = profile.minLotSqft || 0;   // the city's own ADU min-lot rule drives eligibility
+      // eligible = actual house + meets the city's min lot + a real backyard (lot minus house footprint)
       let eligible = parcels.filter((p) => {
-        const a = Number(p.PARCEL_ACRES) || 0;
         const hasHome = (Number(p.BLDG_SQFT) || 0) > 0 || (Number(p.BUILT_YR) || 0) > 0;
-        return hasHome && a > 0 && a * 43560 >= floor;
+        if (!hasHome) return false;
+        const lot = (Number(p.PARCEL_ACRES) || 0) * 43560;
+        if (lot < Math.max(cityMin, SCAN_LOT_FLOOR)) return false;
+        return lot - (Number(p.BLDG_SQFT) || 0) >= SCAN_OPEN_MIN;
       });
       eligible.sort((a, b) => (Number(b.PARCEL_ACRES) || 0) - (Number(a.PARCEL_ACRES) || 0));  // biggest backyards first
       const capped = eligible.length > SCAN_ENRICH_CAP;
@@ -577,14 +580,13 @@ export default function App({ profile, signOut } = {}) {
 
   const TIER_SORT = { hot: 0, warm: 1, cool: 2 };
   const filteredLeads = useMemo(() => leads.filter((l) => {
-    if (l.lotSqft != null && l.lotSqft < (leadFilter.minLot || 0)) return false;   // live-tighten (scan floored at minLot too)
     if (leadFilter.owner === "owner-occupant" && l.occupancy !== "owner-occupant") return false;
     if (leadFilter.owner === "investor" && l.occupancy !== "investor") return false;
     if (leadFilter.owner === "entity" && !l.isEntity) return false;
     if (leadFilter.tier !== "all" && l.tier !== leadFilter.tier) return false;
     return true;
   }).sort((a, b) => (TIER_SORT[a.tier] ?? 3) - (TIER_SORT[b.tier] ?? 3) || (b.marketValue || 0) - (a.marketValue || 0)),
-  [leads, leadFilter.owner, leadFilter.tier, leadFilter.minLot]);
+  [leads, leadFilter.owner, leadFilter.tier]);
 
   const leadPortfolios = useMemo(() => groupPortfolios(filteredLeads), [filteredLeads]);
 
@@ -1276,13 +1278,11 @@ export default function App({ profile, signOut } = {}) {
                 <select value={scanCity} onChange={(e) => setScanCity(e.target.value)} disabled={scanBusy}>
                   {SL_COUNTY_CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
-                <select value={leadFilter.minLot} onChange={(e) => setLeadFilter((f) => ({ ...f, minLot: Number(e.target.value) }))} disabled={scanBusy}>
-                  {[5000, 6000, 7000, 8000, 10000].map((v) => <option key={v} value={v}>{v / 1000}k+ lot</option>)}
-                </select>
                 {scanBusy
                   ? <button className="logbtn" onClick={cancelScan}>Cancel</button>
                   : <button className="logbtn" onClick={() => runCityScan(scanCity)}>Scan</button>}
               </div>
+              <div className="scanhint">Uses {scanCity}'s own ADU rule (detached allowed + min lot) and keeps homes with a real backyard. Filter the results below.</div>
               {scanMsg && <div className="scanmsg">{scanBusy && <span className="spin sm" />}{scanMsg}</div>}
               {leads.length > 0 && (
                 <>
