@@ -232,6 +232,8 @@ const Icon = ({ name }) => {
     return <svg viewBox="0 0 24 24" width="22" height="22" {...p}><path d="M4 7h7M16 7h4M4 17h4M11 17h9" /><circle cx="14" cy="7" r="2.4" /><circle cx="8" cy="17" r="2.4" /></svg>;
   if (name === "trailer")
     return <svg viewBox="0 0 24 24" width="22" height="22" {...p}><path d="M12 2.5 3.5 7v10L12 21.5 20.5 17V7Z" /><path d="M3.7 7 12 11.6 20.3 7M12 11.6V21.4" /></svg>;
+  if (name === "leads")
+    return <svg viewBox="0 0 24 24" width="22" height="22" {...p}><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none" /><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none" /><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none" /></svg>;
   return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M5 20V11M12 20V5M19 20v-6" /></svg>;
 };
 
@@ -369,7 +371,6 @@ export default function App({ profile, signOut } = {}) {
   const [ownerPartial, setOwnerPartial] = useState(false);  // last owner fetch couldn't reach some lots (county server)
   const [showPortfolio, setShowPortfolio] = useState(false);  // portfolio-owner sheet (investors holding multiple lots in view)
   // ---- citywide lead-list scan (Salt Lake County v1) ----
-  const [cityScanOpen, setCityScanOpen] = useState(false);
   const [scanCounty, setScanCounty] = useState("Salt Lake County");
   const [scanCity, setScanCity] = useState(SL_COUNTY_CITIES[0]);
   const [scanBusy, setScanBusy] = useState(false);
@@ -588,13 +589,7 @@ export default function App({ profile, signOut } = {}) {
           raw.forEach((attrs, id) => recs.set(String(id), toOwnerRecord(attrs)));
         }
       };
-      for (let i = 0; i < ids.length; i += WAVE) {
-        if (controller.signal.aborted) return;
-        await enrichWave(ids.slice(i, i + WAVE));
-        if (controller.signal.aborted) return;   // a newer scan / cancel superseded this one
-        setScanMsg(`Looking up owners ${Math.min(i + WAVE, ids.length).toLocaleString()} / ${ids.length.toLocaleString()}…`);
-      }
-      const rows = eligible.map((p) => {
+      const buildRow = (p) => {
         const id = String(p.PARCEL_ID); const rec = recs.get(id); const a = Number(p.PARCEL_ACRES) || 0;
         return {
           parcelId: id, address: p.PARCEL_ADD, city: p.PARCEL_CITY, county: p.COUNTY_NAME,
@@ -604,10 +599,18 @@ export default function App({ profile, signOut } = {}) {
           marketValue: rec?.marketValue || p.TOTAL_MKT_VALUE || null,
           tenureYrs: rec?.tenureYrs ?? null, isEntity: isEntityName(rec?.ownerName), fits: true,
         };
-      });
+      };
+      // stream results in: append each enriched wave to the list so homes appear as they're found
+      for (let i = 0; i < ids.length; i += WAVE) {
+        if (controller.signal.aborted) return;
+        await enrichWave(ids.slice(i, i + WAVE));
+        if (controller.signal.aborted) return;   // a newer scan / cancel superseded this one
+        const waveRows = eligible.slice(i, i + WAVE).map(buildRow);
+        setLeads((prev) => [...prev, ...waveRows]);
+        setScanMsg(`Found ${Math.min(i + WAVE, ids.length).toLocaleString()} of ${ids.length.toLocaleString()} in ${city}…`);
+      }
       if (controller.signal.aborted) return;
-      setLeads(rows);
-      setScanMsg(`${rows.length.toLocaleString()} eligible leads in ${city}${capped ? ` (top ${SCAN_ENRICH_CAP.toLocaleString()} biggest lots)` : ""}.`);
+      setScanMsg(`${ids.length.toLocaleString()} eligible leads in ${city}${capped ? ` (top ${SCAN_ENRICH_CAP.toLocaleString()} biggest lots)` : ""}.`);
     } catch (e) {
       if (!controller.signal.aborted) setScanMsg(`Scan failed: ${e?.message || e}`);
     } finally {
@@ -1057,7 +1060,7 @@ export default function App({ profile, signOut } = {}) {
   // (viewport portfolio) select + fly now; if not (city scan pulled no geometry) fetch its center, fly there,
   // and queue the select for when the area loads.
   const goToLead = async (pid, county) => {
-    setShowPortfolio(false); setCityScanOpen(false); setTab("map");
+    setShowPortfolio(false); setTab("map");
     const lyr = idToLayer.current[pid];
     if (lyr && mapRef.current) {
       setSelected(pid);
@@ -1284,7 +1287,8 @@ export default function App({ profile, signOut } = {}) {
 
   const TABS = [
     { key: "map", label: "Map" },
-    { key: "sell", label: "Add a home" },
+    { key: "leads", label: "Leads" },
+    { key: "sell", label: "Add" },
     { key: "trailer", label: "Trailer" },
     { key: "customers", label: "Customers" },
     { key: "stats", label: "Stats" },
@@ -1325,69 +1329,7 @@ export default function App({ profile, signOut } = {}) {
               {portfolios.length > 0 && (
                 <button onClick={() => setShowPortfolio(true)} title="Owners holding multiple lots in view">🏘 Portfolio owners ({portfolios.length})</button>
               )}
-              <button onClick={() => setCityScanOpen(true)} title="Build a lead list for a whole city">📋 City lead list</button>
               <button onClick={refreshOwners} title="Reload owner data for this area">↻ Refresh owners</button>
-            </div>
-          )}
-          {cityScanOpen && (
-            <div className="portsheet">
-              <div className="porttop">
-                <div><b>City lead list</b><span className="portcount">eligible + owner + equity</span></div>
-                <button className="x" onClick={() => setCityScanOpen(false)} aria-label="Close">×</button>
-              </div>
-              <div className="scanbar">
-                <select value={scanCounty} onChange={(e) => { const co = e.target.value; setScanCounty(co); setScanCity(citiesForCounty(co)[0]); }} disabled={scanBusy}>
-                  {SCAN_COUNTIES.map((c) => <option key={c.name} value={c.name}>{c.name.replace(" County", "")}</option>)}
-                </select>
-                <select value={scanCity} onChange={(e) => setScanCity(e.target.value)} disabled={scanBusy}>
-                  {citiesForCounty(scanCounty).map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-                {scanBusy
-                  ? <button className="logbtn" onClick={cancelScan}>Cancel</button>
-                  : <button className="logbtn" onClick={() => runCityScan(scanCounty, scanCity)}>Scan</button>}
-              </div>
-              <div className="scanhint">{scanCounty === "Davis County"
-                ? "Davis cities use a baseline ADU rule (city ordinances not yet verified) plus a real-backyard check."
-                : `Uses ${scanCity}'s own ADU rule (detached allowed + min lot) and keeps homes with a real backyard.`} Filter the results below.</div>
-              {scanMsg && <div className="scanmsg">{scanBusy && <span className="spin sm" />}{scanMsg}</div>}
-              {leads.length > 0 && (
-                <>
-                  <div className="scanfilters">
-                    <select value={leadFilter.owner} onChange={(e) => setLeadFilter((f) => ({ ...f, owner: e.target.value }))}>
-                      <option value="all">All owners</option>
-                      <option value="owner-occupant">Owner-occupant</option>
-                      <option value="investor">Investor</option>
-                      <option value="entity">LLC / entity</option>
-                    </select>
-                    <select value={leadFilter.tier} onChange={(e) => setLeadFilter((f) => ({ ...f, tier: e.target.value }))}>
-                      <option value="all">All equity</option>
-                      <option value="hot">Hot</option>
-                      <option value="warm">Warm</option>
-                      <option value="cool">Cool</option>
-                    </select>
-                    <button className="link" onClick={() => setLeadView((v) => (v === "list" ? "portfolio" : "list"))}>
-                      {leadView === "list" ? `Portfolios (${leadPortfolios.length})` : "All leads"}
-                    </button>
-                    <button className="logbtn" onClick={exportLeadsCsv}>Export CSV ({filteredLeads.length})</button>
-                  </div>
-                  <div className="portlist">
-                    {leadView === "portfolio"
-                      ? (leadPortfolios.length ? leadPortfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={goToLead} />) : <div className="empty">No owners hold 2+ of these at the current filters.</div>)
-                      : (filteredLeads.length ? filteredLeads.slice(0, 500).map((l) => (
-                          <button key={l.parcelId} className="leadrow" onClick={() => goToLead(l.parcelId, l.county)} title="Show on the map">
-                            <span className="leadmain">
-                              <span className="leadname">{l.ownerName ? ownerDisplay(l.ownerName) : "(owner unknown)"}{l.isEntity && <em className="llcbadge">LLC</em>}</span>
-                              <span className="leadaddr">{titleCase(l.address) || "(no address)"}{l.city ? `, ${titleCase(l.city)}` : ""}</span>
-                            </span>
-                            {l.tier && <span className="leadtier" style={{ background: PORT_TIER_COLOR[l.tier] || "#8a8477" }}>{l.tier}</span>}
-                            {l.marketValue ? <span className="pval">${Math.round(l.marketValue).toLocaleString()}</span> : null}
-                            <span className="leadgo" aria-hidden="true">›</span>
-                          </button>
-                        )) : <div className="empty">No leads at the current filters.</div>)}
-                    {leadView === "list" && filteredLeads.length > 500 && <div className="empty">Showing first 500 of {filteredLeads.length.toLocaleString()}. Export CSV for the full list.</div>}
-                  </div>
-                </>
-              )}
             </div>
           )}
           {showPortfolio && (
@@ -1488,6 +1430,64 @@ export default function App({ profile, signOut } = {}) {
             </div>
           )}
         </main>
+
+        {tab === "leads" && (
+          <section className="panel">
+            <div className="custhd"><span className="phd">City lead list</span></div>
+            <div className="scanbar">
+              <select value={scanCounty} onChange={(e) => { const co = e.target.value; setScanCounty(co); setScanCity(citiesForCounty(co)[0]); }} disabled={scanBusy}>
+                {SCAN_COUNTIES.map((c) => <option key={c.name} value={c.name}>{c.name.replace(" County", "")}</option>)}
+              </select>
+              <select value={scanCity} onChange={(e) => setScanCity(e.target.value)} disabled={scanBusy}>
+                {citiesForCounty(scanCounty).map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {scanBusy
+                ? <button className="logbtn" onClick={cancelScan}>Cancel</button>
+                : <button className="logbtn" onClick={() => runCityScan(scanCounty, scanCity)}>Scan</button>}
+            </div>
+            <div className="scanhint">{scanCounty === "Davis County"
+              ? "Davis cities use a baseline ADU rule (city ordinances not yet verified) plus a real-backyard check."
+              : `Uses ${scanCity}'s own ADU rule (detached allowed + min lot) and keeps homes with a real backyard.`} Tap a lead to see it on the map.</div>
+            {scanMsg && <div className="scanmsg">{scanBusy && <span className="spin sm" />}{scanMsg}</div>}
+            {leads.length > 0 && (
+              <div className="scanfilters">
+                <select value={leadFilter.owner} onChange={(e) => setLeadFilter((f) => ({ ...f, owner: e.target.value }))}>
+                  <option value="all">All owners</option>
+                  <option value="owner-occupant">Owner-occupant</option>
+                  <option value="investor">Investor</option>
+                  <option value="entity">LLC / entity</option>
+                </select>
+                <select value={leadFilter.tier} onChange={(e) => setLeadFilter((f) => ({ ...f, tier: e.target.value }))}>
+                  <option value="all">All equity</option>
+                  <option value="hot">Hot</option>
+                  <option value="warm">Warm</option>
+                  <option value="cool">Cool</option>
+                </select>
+                <button className="link" onClick={() => setLeadView((v) => (v === "list" ? "portfolio" : "list"))}>
+                  {leadView === "list" ? `Portfolios (${leadPortfolios.length})` : "All leads"}
+                </button>
+                <button className="logbtn" onClick={exportLeadsCsv}>Export CSV ({filteredLeads.length})</button>
+              </div>
+            )}
+            <div className="list">
+              {leads.length === 0 && !scanBusy && <div className="empty">Pick a county and city, then <b>Scan</b> to build a lead list of ADU-eligible homes.</div>}
+              {leads.length > 0 && (leadView === "portfolio"
+                ? (leadPortfolios.length ? leadPortfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={goToLead} />) : <div className="empty">No owners hold 2+ of these at the current filters.</div>)
+                : (filteredLeads.length ? filteredLeads.slice(0, 500).map((l) => (
+                    <button key={l.parcelId} className="leadrow" onClick={() => goToLead(l.parcelId, l.county)} title="Show on the map">
+                      <span className="leadmain">
+                        <span className="leadname">{l.ownerName ? ownerDisplay(l.ownerName) : "(owner unknown)"}{l.isEntity && <em className="llcbadge">LLC</em>}</span>
+                        <span className="leadaddr">{titleCase(l.address) || "(no address)"}{l.city ? `, ${titleCase(l.city)}` : ""}</span>
+                      </span>
+                      {l.tier && <span className="leadtier" style={{ background: PORT_TIER_COLOR[l.tier] || "#8a8477" }}>{l.tier}</span>}
+                      {l.marketValue ? <span className="pval">${Math.round(l.marketValue).toLocaleString()}</span> : null}
+                      <span className="leadgo" aria-hidden="true">›</span>
+                    </button>
+                  )) : <div className="empty">No leads at the current filters.</div>))}
+              {leadView === "list" && filteredLeads.length > 500 && <div className="empty">Showing first 500 of {filteredLeads.length.toLocaleString()}. Export CSV for the full list.</div>}
+            </div>
+          </section>
+        )}
 
         {tab === "customers" && (
           <section className="panel">
