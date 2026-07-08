@@ -25,6 +25,21 @@ const SL_COUNTY_CITIES = [
   "Taylorsville", "Draper", "Riverton", "Herriman", "Cottonwood Heights", "Holladay", "South Salt Lake",
   "Midvale", "Bluffdale", "Kearns", "Magna City", "Copperton", "White City", "Emigration Canyon",
 ];
+const UTAH_COUNTY_CITIES = [
+  "Provo", "Orem", "Lehi", "Eagle Mountain", "Saratoga Springs", "Spanish Fork", "American Fork",
+  "Pleasant Grove", "Springville", "Highland", "Mapleton", "Santaquin", "Payson", "Lindon", "Salem",
+  "Alpine", "Cedar Hills", "Vineyard", "Elk Ridge", "Woodland Hills", "Goshen", "Genola", "Fairfield",
+];
+// Davis LIR only covers north/central Davis (Bountiful + south Davis aren't in the dataset).
+const DAVIS_COUNTY_CITIES = [
+  "Layton", "Syracuse", "Clinton", "Clearfield", "Kaysville", "West Point", "South Weber", "Sunset", "Fruit Heights",
+];
+const SCAN_COUNTIES = [
+  { name: "Salt Lake County", cities: SL_COUNTY_CITIES },
+  { name: "Utah County", cities: UTAH_COUNTY_CITIES },
+  { name: "Davis County", cities: DAVIS_COUNTY_CITIES },
+];
+const citiesForCounty = (county) => (SCAN_COUNTIES.find((c) => c.name === county) || SCAN_COUNTIES[0]).cities;
 const SCAN_LOT_FLOOR = 4000;   // fallback min lot for cities whose ADU code sets no minimum (keeps no-yard lots out)
 const SCAN_OPEN_MIN = 1500;    // approx open backyard (lot minus house) needed to place a unit + setbacks
 const SCAN_ENRICH_CAP = 2500;  // max owner lookups per scan (politeness + speed); enrich biggest lots first
@@ -288,7 +303,7 @@ function PortfolioRow({ p, onFly }) {
           <ul className="portparcels">
             {p.parcels.map((pc) => (
               <li key={pc.parcelId}>
-                <button className="portparcel" onClick={() => onFly?.(pc.parcelId)} style={onFly ? undefined : { cursor: "default" }}>
+                <button className="portparcel" onClick={() => onFly?.(pc.parcelId, pc.county)} style={onFly ? undefined : { cursor: "default" }}>
                   <span className={"pdot" + (pc.fits ? " fit" : "")} />
                   <span className="paddr">{titleCase(pc.address) || "(no address)"}{pc.city ? `, ${titleCase(pc.city)}` : ""}</span>
                   {pc.marketValue ? <span className="pval">${Math.round(pc.marketValue).toLocaleString()}</span> : null}
@@ -355,6 +370,7 @@ export default function App({ profile, signOut } = {}) {
   const [showPortfolio, setShowPortfolio] = useState(false);  // portfolio-owner sheet (investors holding multiple lots in view)
   // ---- citywide lead-list scan (Salt Lake County v1) ----
   const [cityScanOpen, setCityScanOpen] = useState(false);
+  const [scanCounty, setScanCounty] = useState("Salt Lake County");
   const [scanCity, setScanCity] = useState(SL_COUNTY_CITIES[0]);
   const [scanBusy, setScanBusy] = useState(false);
   const [scanMsg, setScanMsg] = useState("");
@@ -532,16 +548,16 @@ export default function App({ profile, signOut } = {}) {
   // Citywide lead-list scan: pull all residential parcels in a city, keep the eligible ones (detached allowed +
   // real backyard lot), enrich owners in waves, and build a filterable/exportable lead list. No per-lot geometry
   // fit here (that's a tap-level check) — the list is about WHO to target: owner + equity + eligibility.
-  const runCityScan = async (city) => {
+  const runCityScan = async (county, city) => {
     if (scanAbort.current) scanAbort.current.abort();
     const controller = new AbortController();
     scanAbort.current = controller;
     setScanBusy(true); setLeads([]); setLeadCity(city); setLeadView("list");
     try {
-      const profile = resolveJurisdiction({ city, county: "Salt Lake County" }).profile;
+      const profile = resolveJurisdiction({ city, county }).profile;
       if (profile.detachedAllowed === false) { setScanMsg(`${city} bans detached ADUs — no backyard candidates.`); setScanBusy(false); return; }
       setScanMsg("Loading parcels…");
-      const parcels = await fetchCityParcels(city, { signal: controller.signal, onProgress: (n) => setScanMsg(`Loaded ${n.toLocaleString()} parcels…`) });
+      const parcels = await fetchCityParcels(county, city, { signal: controller.signal, onProgress: (n) => setScanMsg(`Loaded ${n.toLocaleString()} parcels…`) });
       const cityMin = profile.minLotSqft || 0;   // the city's own ADU min-lot rule drives eligibility
       // eligible = actual house + meets the city's min lot + a real backyard (lot minus house footprint)
       let eligible = parcels.filter((p) => {
@@ -555,13 +571,27 @@ export default function App({ profile, signOut } = {}) {
       const capped = eligible.length > SCAN_ENRICH_CAP;
       if (capped) eligible = eligible.slice(0, SCAN_ENRICH_CAP);
       const ids = eligible.map((p) => String(p.PARCEL_ID));
+      const parcelById = new Map(eligible.map((p) => [String(p.PARCEL_ID), p]));
       const recs = new Map();
       const WAVE = 300;
+      // per-county owner enrichment (mirrors the map view's routing): SLCo assessor (tenure) / Utah OwnerParcel
+      // (vesting-year tenure) / Davis county GIS (name+mailing, no tenure). LIR fallback when a service misses a parcel.
+      const enrichWave = async (waveIds) => {
+        if (county === "Utah County") {
+          let raw = new Map(); try { raw = await fetchUtahOwnership(waveIds, { signal: controller.signal }); } catch { raw = new Map(); }
+          for (const id of waveIds) { const a = raw.get(id); recs.set(id, a ? toOwnerRecordUC(a) : toOwnerRecordLIR(parcelById.get(id) || {})); }
+        } else if (county === "Davis County") {
+          let raw = new Map(); try { raw = await fetchDavisOwnership(waveIds, { signal: controller.signal }); } catch { raw = new Map(); }
+          for (const id of waveIds) { const a = raw.get(id); const p = parcelById.get(id) || {}; recs.set(id, a ? toOwnerRecordDavis(a, p) : toOwnerRecordLIR(p)); }
+        } else {
+          const raw = await fetchOwnership(waveIds, { signal: controller.signal });
+          raw.forEach((attrs, id) => recs.set(String(id), toOwnerRecord(attrs)));
+        }
+      };
       for (let i = 0; i < ids.length; i += WAVE) {
         if (controller.signal.aborted) return;
-        const raw = await fetchOwnership(ids.slice(i, i + WAVE), { signal: controller.signal });
+        await enrichWave(ids.slice(i, i + WAVE));
         if (controller.signal.aborted) return;   // a newer scan / cancel superseded this one
-        raw.forEach((attrs, id) => recs.set(String(id), toOwnerRecord(attrs)));
         setScanMsg(`Looking up owners ${Math.min(i + WAVE, ids.length).toLocaleString()} / ${ids.length.toLocaleString()}…`);
       }
       const rows = eligible.map((p) => {
@@ -1026,7 +1056,7 @@ export default function App({ profile, signOut } = {}) {
   // "Show on map" from a lead / portfolio row: jump to the parcel and open its card. If it's already loaded
   // (viewport portfolio) select + fly now; if not (city scan pulled no geometry) fetch its center, fly there,
   // and queue the select for when the area loads.
-  const goToLead = async (pid) => {
+  const goToLead = async (pid, county) => {
     setShowPortfolio(false); setCityScanOpen(false); setTab("map");
     const lyr = idToLayer.current[pid];
     if (lyr && mapRef.current) {
@@ -1036,7 +1066,7 @@ export default function App({ profile, signOut } = {}) {
     }
     pendingSelectRef.current = pid;
     try {
-      const c = await fetchParcelCenter(pid);
+      const c = await fetchParcelCenter(pid, county);
       if (c && mapRef.current) mapRef.current.setView([c.lat, c.lng], Math.max(FIT_ZOOM, 17));
       else pendingSelectRef.current = null;
     } catch { pendingSelectRef.current = null; }
@@ -1302,18 +1332,23 @@ export default function App({ profile, signOut } = {}) {
           {cityScanOpen && (
             <div className="portsheet">
               <div className="porttop">
-                <div><b>City lead list</b><span className="portcount">Salt Lake County · eligible + owner + equity</span></div>
+                <div><b>City lead list</b><span className="portcount">eligible + owner + equity</span></div>
                 <button className="x" onClick={() => setCityScanOpen(false)} aria-label="Close">×</button>
               </div>
               <div className="scanbar">
+                <select value={scanCounty} onChange={(e) => { const co = e.target.value; setScanCounty(co); setScanCity(citiesForCounty(co)[0]); }} disabled={scanBusy}>
+                  {SCAN_COUNTIES.map((c) => <option key={c.name} value={c.name}>{c.name.replace(" County", "")}</option>)}
+                </select>
                 <select value={scanCity} onChange={(e) => setScanCity(e.target.value)} disabled={scanBusy}>
-                  {SL_COUNTY_CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {citiesForCounty(scanCounty).map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
                 {scanBusy
                   ? <button className="logbtn" onClick={cancelScan}>Cancel</button>
-                  : <button className="logbtn" onClick={() => runCityScan(scanCity)}>Scan</button>}
+                  : <button className="logbtn" onClick={() => runCityScan(scanCounty, scanCity)}>Scan</button>}
               </div>
-              <div className="scanhint">Uses {scanCity}'s own ADU rule (detached allowed + min lot) and keeps homes with a real backyard. Filter the results below.</div>
+              <div className="scanhint">{scanCounty === "Davis County"
+                ? "Davis cities use a baseline ADU rule (city ordinances not yet verified) plus a real-backyard check."
+                : `Uses ${scanCity}'s own ADU rule (detached allowed + min lot) and keeps homes with a real backyard.`} Filter the results below.</div>
               {scanMsg && <div className="scanmsg">{scanBusy && <span className="spin sm" />}{scanMsg}</div>}
               {leads.length > 0 && (
                 <>
@@ -1339,7 +1374,7 @@ export default function App({ profile, signOut } = {}) {
                     {leadView === "portfolio"
                       ? (leadPortfolios.length ? leadPortfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={goToLead} />) : <div className="empty">No owners hold 2+ of these at the current filters.</div>)
                       : (filteredLeads.length ? filteredLeads.slice(0, 500).map((l) => (
-                          <button key={l.parcelId} className="leadrow" onClick={() => goToLead(l.parcelId)} title="Show on the map">
+                          <button key={l.parcelId} className="leadrow" onClick={() => goToLead(l.parcelId, l.county)} title="Show on the map">
                             <span className="leadmain">
                               <span className="leadname">{l.ownerName ? ownerDisplay(l.ownerName) : "(owner unknown)"}{l.isEntity && <em className="llcbadge">LLC</em>}</span>
                               <span className="leadaddr">{titleCase(l.address) || "(no address)"}{l.city ? `, ${titleCase(l.city)}` : ""}</span>

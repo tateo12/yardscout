@@ -28,6 +28,13 @@ export const LAYERS = {
   buildings: `${ORG}/Buildings/FeatureServer/0`,
   roads: `${ORG}/UtahRoads/FeatureServer/0`,
 };
+// per-county LIR layer for the citywide scan / on-demand center lookup
+export const PARCEL_LAYER_BY_COUNTY = {
+  "Salt Lake County": LAYERS.parcels,
+  "Utah County": `${ORG}/Parcels_Utah_LIR/FeatureServer/0`,
+  "Davis County": `${ORG}/Parcels_Davis_LIR/FeatureServer/0`,
+};
+const parcelLayer = (county) => PARCEL_LAYER_BY_COUNTY[county] || LAYERS.parcels;
 
 async function esriGeojson(url, extra) {
   const params = new URLSearchParams({
@@ -58,8 +65,9 @@ export async function fetchParcels(bbox, where = "PROP_CLASS='Residential'") {
 }
 // Pull ALL residential parcels in one city (attributes only, no geometry) for the citywide lead-list scan.
 // Paginated. Case-insensitive city match. onProgress(count) fires per page. Salt Lake County only (LAYERS.parcels).
-export async function fetchCityParcels(city, { signal, onProgress, page = 2000, maxPages = 60 } = {}) {
+export async function fetchCityParcels(county, city, { signal, onProgress, page = 2000, maxPages = 60 } = {}) {
   const cityUp = String(city || "").toUpperCase().replace(/'/g, "");
+  const layer = parcelLayer(county);
   const out = [];
   let offset = 0, more = true, pages = 0;
   while (more && pages < maxPages) {
@@ -68,7 +76,7 @@ export async function fetchCityParcels(city, { signal, onProgress, page = 2000, 
       outFields: "PARCEL_ID,PARCEL_ADD,PARCEL_CITY,COUNTY_NAME,PARCEL_ACRES,BLDG_SQFT,PRIMARY_RES,TOTAL_MKT_VALUE,BUILT_YR",
       returnGeometry: "false", outSR: "4326", f: "json", resultRecordCount: String(page), resultOffset: String(offset),
     });
-    const r = await fetch(`${LAYERS.parcels}/query?${params}`, { signal });
+    const r = await fetch(`${layer}/query?${params}`, { signal });
     if (!r.ok) throw new Error(`city parcels ${r.status}`);
     const j = await r.json();
     if (j.error) throw new Error(j.error.message);
@@ -82,12 +90,12 @@ export async function fetchCityParcels(city, { signal, onProgress, page = 2000, 
 }
 
 // One parcel's centroid by PARCEL_ID (the city scan pulls no geometry, so we fetch it on demand to jump the map there).
-export async function fetchParcelCenter(parcelId) {
+export async function fetchParcelCenter(parcelId, county) {
   const params = new URLSearchParams({
     where: `PARCEL_ID='${String(parcelId).replace(/'/g, "")}'`,
     outFields: "PARCEL_ID", returnGeometry: "true", outSR: "4326", f: "geojson", resultRecordCount: "1",
   });
-  const r = await fetch(`${LAYERS.parcels}/query?${params}`);
+  const r = await fetch(`${parcelLayer(county)}/query?${params}`);
   if (!r.ok) throw new Error(`parcel ${r.status}`);
   const j = await r.json();
   const f = (j.features || [])[0];
