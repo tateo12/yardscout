@@ -368,7 +368,6 @@ export default function App({ profile, signOut } = {}) {
   const [openModel, setOpenModel] = useState(null);   // Trailer tab: which unit is expanded (3D loads only when open)
   const [showRules, setShowRules] = useState(false);   // detail card: expand the jurisdiction's ADU rules
   const [ownerPartial, setOwnerPartial] = useState(false);  // last owner fetch couldn't reach some lots (county server)
-  const [showPortfolio, setShowPortfolio] = useState(false);  // portfolio-owner sheet (investors holding multiple lots in view)
   const [openPortKey, setOpenPortKey] = useState(null);       // which portfolio owner row is expanded (accordion: one at a time)
   // ---- citywide lead-list scan (Salt Lake County v1) ----
   const [scanCounty, setScanCounty] = useState("Salt Lake County");
@@ -1060,7 +1059,7 @@ export default function App({ profile, signOut } = {}) {
   // (viewport portfolio) select + fly now; if not (city scan pulled no geometry) fetch its center, fly there,
   // and queue the select for when the area loads.
   const goToLead = async (pid, county) => {
-    setShowPortfolio(false); setTab("map");
+    setTab("map");
     // let the (previously hidden) map become visible, fix its size, THEN move — otherwise it moves at the wrong
     // size, jams interaction, and loads the wrong bbox. setView (not flyTo) avoids animation jank during the load.
     const move = (center, zoom) => setTimeout(() => { const m = mapRef.current; if (m) { m.invalidateSize(); m.setView(center, zoom); } }, 60);
@@ -1225,24 +1224,6 @@ export default function App({ profile, signOut } = {}) {
     return t;
   }, [customers]);
   // portfolio owners in the loaded area: cluster enriched parcels by owner, keep those holding 2+ lots
-  const portfolios = useMemo(() => {
-    void ownerVer;   // recompute when owner data lands
-    const cache = ownerCacheRef.current;
-    const items = [];
-    for (const p of features) {
-      const rec = freshOwner(cache, p._key);
-      if (!rec?.ownerName) continue;
-      // only real homes count — skip sliver/vacant parcels (no building) that share an address (see 557 E Walnut Brook)
-      if (!((Number(p.BLDG_SQFT) || 0) > 0 || (Number(p.BUILT_YR) || 0) > 0)) continue;
-      items.push({
-        ownerName: rec.ownerName, mailingAddr: rec.mailingAddr, parcelId: p._key,
-        address: p.PARCEL_ADD, city: p.PARCEL_CITY, county: p.COUNTY_NAME,
-        tier: rec.tier, marketValue: rec.marketValue, occupancy: rec.occupancy,
-        fits: p._fitStatus === "fits",
-      });
-    }
-    return groupPortfolios(items);
-  }, [features, ownerVer]);
 
   const stats = useMemo(() => {
     const tally = Object.fromEntries(OUTCOMES.map((o) => [o.key, 0]));
@@ -1329,26 +1310,7 @@ export default function App({ profile, signOut } = {}) {
           {!zoomedOut && (
             <div className="ownerctl">
               {ownerPartial && <span className="ownerctl-warn">Some owner data didn’t load</span>}
-              {portfolios.length > 0 && (
-                <button onClick={() => setShowPortfolio(true)} title="Owners holding multiple lots in view">🏘 Portfolio owners ({portfolios.length})</button>
-              )}
               <button onClick={refreshOwners} title="Reload owner data for this area">↻ Refresh owners</button>
-            </div>
-          )}
-          {showPortfolio && (
-            <div className="portsheet">
-              <div className="porttop">
-                <div>
-                  <b>Portfolio owners</b>
-                  <span className="portcount">{portfolios.length} in view · 2+ homes, 1+ ADU-viable</span>
-                </div>
-                <button className="x" onClick={() => setShowPortfolio(false)} aria-label="Close">×</button>
-              </div>
-              <div className="portlist">
-                {portfolios.length === 0
-                  ? <div className="empty">No multi-property owners in this area yet. Pan to a neighborhood and let owner data load.</div>
-                  : portfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={goToLead} open={openPortKey === p.key} onToggle={() => setOpenPortKey((k) => (k === p.key ? null : p.key))} />)}
-              </div>
             </div>
           )}
           {sel && (
@@ -1466,9 +1428,10 @@ export default function App({ profile, signOut } = {}) {
                   <option value="warm">Warm</option>
                   <option value="cool">Cool</option>
                 </select>
-                <button className="link" onClick={() => setLeadView((v) => (v === "list" ? "portfolio" : "list"))}>
-                  {leadView === "list" ? `Portfolios (${leadPortfolios.length})` : "All leads"}
-                </button>
+                <div className="leadseg">
+                  <button className={leadView === "list" ? "on" : ""} onClick={() => setLeadView("list")}>Leads</button>
+                  <button className={leadView === "portfolio" ? "on" : ""} onClick={() => setLeadView("portfolio")}>Owners ({leadPortfolios.length})</button>
+                </div>
                 <button className="logbtn" onClick={exportLeadsCsv}>Export CSV ({filteredLeads.length})</button>
               </div>
             )}

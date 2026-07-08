@@ -260,6 +260,10 @@
 .scanfilters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; background: var(--card); border-bottom: 1px solid var(--line); }
 .scanfilters select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; font-size: 13px; font-family: inherit; background: #fff; color: var(--text); }
 .scanfilters .logbtn { margin-left: auto; }
+.leadseg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.leadseg button { border: 0; background: #fff; color: var(--muted); font-family: inherit; font-size: 13px; font-weight: 600; padding: 8px 12px; cursor: pointer; }
+.leadseg button + button { border-left: 1px solid var(--line); }
+.leadseg button.on { background: var(--green); color: #fff; }
 .leadrow { width: 100%; display: flex; align-items: center; gap: 9px; padding: 10px 13px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font-family: inherit; text-align: left; }
 .leadrow:active { background: var(--snow); }
 .leadgo { flex: none; color: var(--muted); font-size: 18px; line-height: 1; }
