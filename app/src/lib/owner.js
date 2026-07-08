@@ -93,6 +93,7 @@ export function toOwnerRecord(a, now = new Date(), fetchedAt = Date.now()) {
   return {
     parcelId: String(a.parcel_id),
     ownerName: a.own_name || null,
+    mailingAddr: [a.own_addr, a.own_citystate].filter(Boolean).join(", ") || null,
     occupancy: occ.tag,
     occupancyWhy: occ.why,
     pitch: pitchFor(occ.tag),
@@ -143,6 +144,7 @@ export function toOwnerRecordUC(a, now = new Date(), fetchedAt = Date.now()) {
   return {
     parcelId: String(a.PARCELID),
     ownerName: a.OWNER_NAME || null,
+    mailingAddr: [a.OWN_STREET_ADDRESS, a.OWN_CITY].filter(Boolean).join(", ") || null,
     occupancy: occ.tag, occupancyWhy: occ.why, pitch: pitchFor(occ.tag),
     tenureYrs: tYrs,
     marketValue: value,
@@ -182,6 +184,7 @@ export function toOwnerRecordDavis(davis, lir = {}, now = new Date(), fetchedAt 
   return {
     parcelId: String(lir.PARCEL_ID || davis.ParcelTaxID),
     ownerName: davis.ParcelOwnerName || null,
+    mailingAddr: [davis.ParcelOwnerMailAddressLine1, davis.ParcelOwnerMailCity, davis.ParcelOwnerMailState].filter(Boolean).join(", ") || null,
     occupancy: occ.tag, occupancyWhy: occ.why, pitch: pitchFor(occ.tag),
     tenureYrs: null,                 // Davis exposes no sale/deed/vesting date -> tenure unknown
     marketValue: value,
@@ -203,6 +206,7 @@ export function toOwnerRecordLIR(a, now = new Date(), fetchedAt = Date.now()) {
   return {
     parcelId: String(a.PARCEL_ID),
     ownerName: null,                 // Utah County exposes no CORS-open owner-name+sale service (tenure unknown)
+    mailingAddr: null,
     occupancy: occ, occupancyWhy: why, pitch: pitchFor(occ),
     tenureYrs: null,
     marketValue: a.TOTAL_MKT_VALUE || null,
@@ -211,4 +215,48 @@ export function toOwnerRecordLIR(a, now = new Date(), fetchedAt = Date.now()) {
     score, tier: equityTier(score),
     fetchedAt,
   };
+}
+
+// --- portfolio detection -----------------------------------------------------
+// Cluster enriched parcels by owner so one landlord holding several ADU-viable homes surfaces as a single lead.
+// Normalize the owner name so "SMITH, JOHN - TRUSTEE", "SMITH JOHN", and "Smith, John (MORE)" group together.
+export function normOwnerKey(name) {
+  return String(name || "")
+    .toUpperCase()
+    .replace(/\bTRUSTEES?\b/g, " ")
+    .replace(/\bET AL\b/g, " ")
+    .replace(/\(MORE\)/g, " ")
+    .replace(/[.,\-&]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const TIER_RANK = { hot: 3, warm: 2, cool: 1 };
+
+// items: [{ ownerName, mailingAddr, parcelId, address, city, county, tier, marketValue, occupancy, fits }]
+// Returns owners with 2+ properties, ranked by fitting-property count, then total count, then combined value.
+export function groupPortfolios(items = []) {
+  const map = new Map();
+  for (const it of items) {
+    const key = normOwnerKey(it.ownerName);
+    if (!key) continue;
+    let g = map.get(key);
+    if (!g) {
+      g = { key, owner: it.ownerName, mailingAddr: it.mailingAddr || null, occupancy: it.occupancy || "unknown",
+        topTier: null, count: 0, fitCount: 0, totalValue: 0, parcels: [] };
+      map.set(key, g);
+    }
+    g.count += 1;
+    if (it.fits) g.fitCount += 1;
+    if (it.marketValue) g.totalValue += it.marketValue;
+    if (!g.mailingAddr && it.mailingAddr) g.mailingAddr = it.mailingAddr;
+    if ((TIER_RANK[it.tier] || 0) > (TIER_RANK[g.topTier] || 0)) g.topTier = it.tier;
+    g.parcels.push({ parcelId: it.parcelId, address: it.address, city: it.city, county: it.county,
+      tier: it.tier, marketValue: it.marketValue || null, fits: !!it.fits });
+  }
+  return [...map.values()]
+    // a portfolio LEAD = owns 2+ homes here AND at least one is ADU-viable (skip owners with no actionable lot)
+    .filter((g) => g.count >= 2 && g.fitCount >= 1)
+    .map((g) => ({ ...g, parcels: g.parcels.sort((a, b) => (Number(b.fits) - Number(a.fits)) || ((b.marketValue || 0) - (a.marketValue || 0))) }))
+    .sort((a, b) => (b.fitCount - a.fitCount) || (b.count - a.count) || (b.totalValue - a.totalValue));
 }

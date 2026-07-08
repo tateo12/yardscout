@@ -227,6 +227,29 @@
 .duechip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; font-family: inherit; }
 .duechip:active { background: var(--snow); }
 
+/* ---- portfolio owners sheet ---- */
+.portsheet { position: absolute; inset: 0; z-index: 900; background: var(--snow); display: flex; flex-direction: column; }
+.porttop { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px; background: var(--card); border-bottom: 1px solid var(--line); }
+.porttop b { font-size: 16px; }
+.portcount { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
+.porttop .x { position: static; border: 0; background: transparent; font-size: 24px; line-height: 1; color: var(--muted); cursor: pointer; }
+.portlist { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
+.portrow { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.porthd { width: 100%; display: flex; align-items: center; gap: 9px; padding: 12px 13px; border: 0; background: transparent; cursor: pointer; font-family: inherit; text-align: left; }
+.portname { flex: 1; min-width: 0; font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.portmeta { flex: none; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.porttier { flex: none; font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #fff; padding: 2px 7px; border-radius: 999px; }
+.portchev { flex: none; color: var(--muted); font-size: 12px; }
+.portbody { padding: 0 13px 12px; }
+.portsub { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 8px; font-size: 12px; color: var(--muted); }
+.portmail { color: var(--text); }
+.portparcels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.portparcel { width: 100%; display: flex; align-items: center; gap: 9px; padding: 8px 0; border: 0; border-top: 1px dashed var(--line); background: transparent; cursor: pointer; font-family: inherit; text-align: left; }
+.pdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.pdot.fit { background: var(--green); }
+.paddr { flex: 1; min-width: 0; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pval { flex: none; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
 /* ---- stats ---- */
 .readouts { display: flex; gap: 9px; margin: 9px 0 6px; }
 .ro { flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 13px; padding: 16px 10px; text-align: center; }

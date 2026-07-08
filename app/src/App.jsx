@@ -4,7 +4,7 @@ import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subsc
 import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership, fetchUtahOwnership, fetchDavisOwnership } from "./lib/geo";
 import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS, resolveJurisdiction, JURISDICTIONS_VERSION } from "./lib/adu";
 import { aduSizeCap, PRIMARY_ABOVEGRADE_FACTOR } from "./lib/fit";
-import { toOwnerRecord, toOwnerRecordLIR, toOwnerRecordUC, toOwnerRecordDavis } from "./lib/owner";
+import { toOwnerRecord, toOwnerRecordLIR, toOwnerRecordUC, toOwnerRecordDavis, groupPortfolios } from "./lib/owner";
 import { sharePdf } from "./lib/share";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -250,6 +250,41 @@ function ActivityBlock({ acts = [], nextFollowUp, onLog, onRemove, onFollowUp })
   );
 }
 
+// One portfolio owner in the Portfolio sheet: summary row that expands to their properties.
+const PORT_TIER_COLOR = { hot: "#c4552d", warm: "#c68a2e", cool: "#4f7a99" };
+function PortfolioRow({ p, onFly }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="portrow">
+      <button className="porthd" onClick={() => setOpen((o) => !o)}>
+        <span className="portname">{p.owner}</span>
+        <span className="portmeta">{p.count} homes · {p.fitCount} fit</span>
+        {p.topTier && <span className="porttier" style={{ background: PORT_TIER_COLOR[p.topTier] || "#8a8477" }}>{p.topTier}</span>}
+        <span className="portchev">{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <div className="portbody">
+          <div className="portsub">
+            <span className="occ">{p.occupancy}</span>
+            {p.mailingAddr && <span className="portmail">Mail: {p.mailingAddr}</span>}
+          </div>
+          <ul className="portparcels">
+            {p.parcels.map((pc) => (
+              <li key={pc.parcelId}>
+                <button className="portparcel" onClick={() => onFly(pc.parcelId)}>
+                  <span className={"pdot" + (pc.fits ? " fit" : "")} />
+                  <span className="paddr">{titleCase(pc.address) || "(no address)"}{pc.city ? `, ${titleCase(pc.city)}` : ""}</span>
+                  {pc.marketValue ? <span className="pval">${Math.round(pc.marketValue).toLocaleString()}</span> : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App({ profile, signOut } = {}) {
   const mapRef = useRef(null);
   const baseLayerRef = useRef(null);
@@ -298,6 +333,7 @@ export default function App({ profile, signOut } = {}) {
   const [openModel, setOpenModel] = useState(null);   // Trailer tab: which unit is expanded (3D loads only when open)
   const [showRules, setShowRules] = useState(false);   // detail card: expand the jurisdiction's ADU rules
   const [ownerPartial, setOwnerPartial] = useState(false);  // last owner fetch couldn't reach some lots (county server)
+  const [showPortfolio, setShowPortfolio] = useState(false);  // portfolio-owner sheet (investors holding multiple lots in view)
   const [pull, setPull] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const pullRef = useRef(0);
@@ -863,6 +899,15 @@ export default function App({ profile, signOut } = {}) {
   }, [selected]);
 
   const flyTo = (center, zoom = 18) => mapRef.current?.flyTo(center, zoom, { duration: 0.6 });
+  // from the portfolio sheet: close it, open the tapped parcel, and fly there
+  const flyToParcel = (pid) => {
+    const lyr = idToLayer.current[pid];
+    if (!lyr || !mapRef.current) return;
+    setShowPortfolio(false);
+    setTab("map");
+    setSelected(pid);
+    mapRef.current.flyTo(lyr.getBounds().getCenter(), Math.max(mapRef.current.getZoom(), FIT_ZOOM), { duration: 0.6 });
+  };
 
   // open the full-screen 3D lot view for a parcel with a given model (used by the map card AND the Add-a-home tab)
   const openLotView = (key, model, place, label) => {
@@ -1010,6 +1055,23 @@ export default function App({ profile, signOut } = {}) {
     customers.forEach((c) => { const k = c.outcome || "lead"; if (k in t) t[k] += 1; });
     return t;
   }, [customers]);
+  // portfolio owners in the loaded area: cluster enriched parcels by owner, keep those holding 2+ lots
+  const portfolios = useMemo(() => {
+    void ownerVer;   // recompute when owner data lands
+    const cache = ownerCacheRef.current;
+    const items = [];
+    for (const p of features) {
+      const rec = freshOwner(cache, p._key);
+      if (!rec?.ownerName) continue;
+      items.push({
+        ownerName: rec.ownerName, mailingAddr: rec.mailingAddr, parcelId: p._key,
+        address: p.PARCEL_ADD, city: p.PARCEL_CITY, county: p.COUNTY_NAME,
+        tier: rec.tier, marketValue: rec.marketValue, occupancy: rec.occupancy,
+        fits: p._fitStatus === "fits",
+      });
+    }
+    return groupPortfolios(items);
+  }, [features, ownerVer]);
 
   const stats = useMemo(() => {
     const tally = Object.fromEntries(OUTCOMES.map((o) => [o.key, 0]));
@@ -1095,7 +1157,26 @@ export default function App({ profile, signOut } = {}) {
           {!zoomedOut && (
             <div className="ownerctl">
               {ownerPartial && <span className="ownerctl-warn">Some owner data didn’t load</span>}
+              {portfolios.length > 0 && (
+                <button onClick={() => setShowPortfolio(true)} title="Owners holding multiple lots in view">🏘 Portfolio owners ({portfolios.length})</button>
+              )}
               <button onClick={refreshOwners} title="Reload owner data for this area">↻ Refresh owners</button>
+            </div>
+          )}
+          {showPortfolio && (
+            <div className="portsheet">
+              <div className="porttop">
+                <div>
+                  <b>Portfolio owners</b>
+                  <span className="portcount">{portfolios.length} in view · 2+ homes, 1+ ADU-viable</span>
+                </div>
+                <button className="x" onClick={() => setShowPortfolio(false)} aria-label="Close">×</button>
+              </div>
+              <div className="portlist">
+                {portfolios.length === 0
+                  ? <div className="empty">No multi-property owners in this area yet. Pan to a neighborhood and let owner data load.</div>
+                  : portfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={flyToParcel} />)}
+              </div>
             </div>
           )}
           {sel && (
