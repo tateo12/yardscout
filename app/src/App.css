@@ -228,7 +228,7 @@
 .duechip:active { background: var(--snow); }
 
 /* ---- portfolio owners sheet ---- */
-.portsheet { position: absolute; inset: 0; z-index: 900; background: var(--snow); display: flex; flex-direction: column; }
+.portsheet { position: absolute; inset: 0; z-index: 1050; background: var(--snow); display: flex; flex-direction: column; }  /* above Leaflet controls (~1000), below the bottom nav (1100) */
 .porttop { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px; background: var(--card); border-bottom: 1px solid var(--line); }
 .porttop b { font-size: 16px; }
 .portcount { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); margin-top: 3px; }

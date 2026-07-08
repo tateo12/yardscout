@@ -233,6 +233,21 @@ export function normOwnerKey(name) {
 
 const TIER_RANK = { hot: 3, warm: 2, cool: 1 };
 
+// Counties often record several parcels for one home (the house lot + a sliver/driveway/common-area parcel).
+// Collapse parcels that share a situs address so one home isn't counted as two; keep the best representative
+// (prefer a fitting lot, then the higher assessed value). Parcels with no address fall back to their id (stay distinct).
+function dedupeParcels(parcels) {
+  const byAddr = new Map();
+  for (const pc of parcels) {
+    const k = pc.address ? String(pc.address).toUpperCase().replace(/[.,#]/g, " ").replace(/\s+/g, " ").trim() : "#" + pc.parcelId;
+    const cur = byAddr.get(k);
+    if (!cur) { byAddr.set(k, pc); continue; }
+    const better = Number(pc.fits) !== Number(cur.fits) ? pc.fits && !cur.fits : (pc.marketValue || 0) > (cur.marketValue || 0);
+    if (better) byAddr.set(k, pc);   // keep the fitting lot, else the higher-value one
+  }
+  return [...byAddr.values()];
+}
+
 // items: [{ ownerName, mailingAddr, parcelId, address, city, county, tier, marketValue, occupancy, fits }]
 // Returns owners with 2+ properties, ranked by fitting-property count, then total count, then combined value.
 export function groupPortfolios(items = []) {
@@ -255,8 +270,12 @@ export function groupPortfolios(items = []) {
       tier: it.tier, marketValue: it.marketValue || null, fits: !!it.fits });
   }
   return [...map.values()]
-    // a portfolio LEAD = owns 2+ homes here AND at least one is ADU-viable (skip owners with no actionable lot)
+    .map((g) => {
+      // collapse duplicate/sliver parcels to distinct homes, then recount from those
+      const parcels = dedupeParcels(g.parcels).sort((a, b) => (Number(b.fits) - Number(a.fits)) || ((b.marketValue || 0) - (a.marketValue || 0)));
+      return { ...g, parcels, count: parcels.length, fitCount: parcels.filter((p) => p.fits).length, totalValue: parcels.reduce((s, p) => s + (p.marketValue || 0), 0) };
+    })
+    // a portfolio LEAD = owns 2+ distinct homes here AND at least one is ADU-viable (skip owners with no actionable lot)
     .filter((g) => g.count >= 2 && g.fitCount >= 1)
-    .map((g) => ({ ...g, parcels: g.parcels.sort((a, b) => (Number(b.fits) - Number(a.fits)) || ((b.marketValue || 0) - (a.marketValue || 0))) }))
     .sort((a, b) => (b.fitCount - a.fitCount) || (b.count - a.count) || (b.totalValue - a.totalValue));
 }
