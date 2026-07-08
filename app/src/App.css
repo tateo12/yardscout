@@ -259,7 +259,9 @@
 .scanfilters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; background: var(--card); border-bottom: 1px solid var(--line); }
 .scanfilters select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; font-size: 13px; font-family: inherit; background: #fff; color: var(--text); }
 .scanfilters .logbtn { margin-left: auto; }
-.leadrow { display: flex; align-items: center; gap: 9px; padding: 10px 13px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+.leadrow { width: 100%; display: flex; align-items: center; gap: 9px; padding: 10px 13px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font-family: inherit; text-align: left; }
+.leadrow:active { background: var(--snow); }
+.leadgo { flex: none; color: var(--muted); font-size: 18px; line-height: 1; }
 .leadmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .leadname { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .leadname .llcbadge { margin-left: 7px; font-style: normal; font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .5px; color: #fff; background: var(--green); padding: 1px 6px; border-radius: 999px; vertical-align: middle; }

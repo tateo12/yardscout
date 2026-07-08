@@ -81,6 +81,21 @@ export async function fetchCityParcels(city, { signal, onProgress, page = 2000, 
   return out;
 }
 
+// One parcel's centroid by PARCEL_ID (the city scan pulls no geometry, so we fetch it on demand to jump the map there).
+export async function fetchParcelCenter(parcelId) {
+  const params = new URLSearchParams({
+    where: `PARCEL_ID='${String(parcelId).replace(/'/g, "")}'`,
+    outFields: "PARCEL_ID", returnGeometry: "true", outSR: "4326", f: "geojson", resultRecordCount: "1",
+  });
+  const r = await fetch(`${LAYERS.parcels}/query?${params}`);
+  if (!r.ok) throw new Error(`parcel ${r.status}`);
+  const j = await r.json();
+  const f = (j.features || [])[0];
+  if (!f?.geometry) return null;
+  const [lng, lat] = turfCentroid(f).geometry.coordinates;
+  return { lat, lng };
+}
+
 export async function fetchBuildings(bbox) {
   return esriGeojson(LAYERS.buildings, { geometry: bboxStr(bbox), where: "1=1", outFields: "OBJECTID,TYPE,SRC_YEAR" });
 }

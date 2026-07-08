@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Parcel3D from "./Parcel3D";
 import { loadCustomers, saveCustomer, deleteCustomer, loadFlags, saveFlag, subscribeShared, loadActivities, logActivity, deleteActivity, updateFollowUp } from "./lib/data";
-import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership, fetchUtahOwnership, fetchDavisOwnership, fetchCityParcels } from "./lib/geo";
+import { computeParcelFit, fitParcelWith, fetchBuildings, fetchRoads, fetchOwnership, fetchUtahOwnership, fetchDavisOwnership, fetchCityParcels, fetchParcelCenter } from "./lib/geo";
 import { ADU_MODELS, KEARNS_PROFILE, BUSINESS_OVERLAY, NEEDS_CHECK_LABEL, CITY_PROFILES, RULE_OPTIONS, resolveJurisdiction, JURISDICTIONS_VERSION } from "./lib/adu";
 import { aduSizeCap, PRIMARY_ABOVEGRADE_FACTOR } from "./lib/fit";
 import { toOwnerRecord, toOwnerRecordLIR, toOwnerRecordUC, toOwnerRecordDavis, groupPortfolios, isEntityName } from "./lib/owner";
@@ -302,6 +302,7 @@ export default function App({ profile, signOut } = {}) {
   const markersRef = useRef(null);
   const markerByKey = useRef({});
   const idToLayer = useRef({});
+  const pendingSelectRef = useRef(null);   // parcel to auto-select once it loads (from a city-scan/portfolio "show on map")
   const knocksRef = useRef({});
   const flagsRef = useRef({});
   const dirtyRef = useRef(new Set());   // customer keys with an unsaved/in-flight edit — preserved across realtime reloads
@@ -648,6 +649,9 @@ export default function App({ profile, signOut } = {}) {
       markersRef.current.addLayer(m);
     });
     setFeatures(rawFeatures.map((f) => f.properties));
+    // if a "show on map" jump is waiting on this parcel to load, select it now (opens its card + fit)
+    const pend = pendingSelectRef.current;
+    if (pend && idToLayer.current[pend]) { pendingSelectRef.current = null; setSelected(pend); }
   }, []);
 
   // add/update/remove a customer's flag pin live
@@ -1001,14 +1005,23 @@ export default function App({ profile, signOut } = {}) {
   }, [selected]);
 
   const flyTo = (center, zoom = 18) => mapRef.current?.flyTo(center, zoom, { duration: 0.6 });
-  // from the portfolio sheet: close it, open the tapped parcel, and fly there
-  const flyToParcel = (pid) => {
+  // "Show on map" from a lead / portfolio row: jump to the parcel and open its card. If it's already loaded
+  // (viewport portfolio) select + fly now; if not (city scan pulled no geometry) fetch its center, fly there,
+  // and queue the select for when the area loads.
+  const goToLead = async (pid) => {
+    setShowPortfolio(false); setCityScanOpen(false); setTab("map");
     const lyr = idToLayer.current[pid];
-    if (!lyr || !mapRef.current) return;
-    setShowPortfolio(false);
-    setTab("map");
-    setSelected(pid);
-    mapRef.current.flyTo(lyr.getBounds().getCenter(), Math.max(mapRef.current.getZoom(), FIT_ZOOM), { duration: 0.6 });
+    if (lyr && mapRef.current) {
+      setSelected(pid);
+      mapRef.current.flyTo(lyr.getBounds().getCenter(), Math.max(mapRef.current.getZoom(), FIT_ZOOM), { duration: 0.6 });
+      return;
+    }
+    pendingSelectRef.current = pid;
+    try {
+      const c = await fetchParcelCenter(pid);
+      if (c && mapRef.current) mapRef.current.setView([c.lat, c.lng], Math.max(FIT_ZOOM, 17));
+      else pendingSelectRef.current = null;
+    } catch { pendingSelectRef.current = null; }
   };
 
   // open the full-screen 3D lot view for a parcel with a given model (used by the map card AND the Add-a-home tab)
@@ -1306,16 +1319,17 @@ export default function App({ profile, signOut } = {}) {
                   </div>
                   <div className="portlist">
                     {leadView === "portfolio"
-                      ? (leadPortfolios.length ? leadPortfolios.map((p) => <PortfolioRow key={p.key} p={p} />) : <div className="empty">No owners hold 2+ of these at the current filters.</div>)
+                      ? (leadPortfolios.length ? leadPortfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={goToLead} />) : <div className="empty">No owners hold 2+ of these at the current filters.</div>)
                       : (filteredLeads.length ? filteredLeads.slice(0, 500).map((l) => (
-                          <div key={l.parcelId} className="leadrow">
+                          <button key={l.parcelId} className="leadrow" onClick={() => goToLead(l.parcelId)} title="Show on the map">
                             <span className="leadmain">
                               <span className="leadname">{l.ownerName ? ownerDisplay(l.ownerName) : "(owner unknown)"}{l.isEntity && <em className="llcbadge">LLC</em>}</span>
                               <span className="leadaddr">{titleCase(l.address) || "(no address)"}{l.city ? `, ${titleCase(l.city)}` : ""}</span>
                             </span>
                             {l.tier && <span className="leadtier" style={{ background: PORT_TIER_COLOR[l.tier] || "#8a8477" }}>{l.tier}</span>}
                             {l.marketValue ? <span className="pval">${Math.round(l.marketValue).toLocaleString()}</span> : null}
-                          </div>
+                            <span className="leadgo" aria-hidden="true">›</span>
+                          </button>
                         )) : <div className="empty">No leads at the current filters.</div>)}
                     {leadView === "list" && filteredLeads.length > 500 && <div className="empty">Showing first 500 of {filteredLeads.length.toLocaleString()}. Export CSV for the full list.</div>}
                   </div>
@@ -1335,7 +1349,7 @@ export default function App({ profile, signOut } = {}) {
               <div className="portlist">
                 {portfolios.length === 0
                   ? <div className="empty">No multi-property owners in this area yet. Pan to a neighborhood and let owner data load.</div>
-                  : portfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={flyToParcel} />)}
+                  : portfolios.map((p) => <PortfolioRow key={p.key} p={p} onFly={goToLead} />)}
               </div>
             </div>
           )}
