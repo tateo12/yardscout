@@ -533,7 +533,12 @@ export default function App({ profile, signOut } = {}) {
       setScanMsg("Loading parcels…");
       const parcels = await fetchCityParcels(city, { signal: controller.signal, onProgress: (n) => setScanMsg(`Loaded ${n.toLocaleString()} parcels…`) });
       const floor = Math.max(leadFilter.minLot || 0, profile.minLotSqft || 0);
-      let eligible = parcels.filter((p) => { const a = Number(p.PARCEL_ACRES) || 0; return a > 0 && a * 43560 >= floor; });
+      // eligible = has an actual house (not a vacant lot/sliver) + a real backyard lot
+      let eligible = parcels.filter((p) => {
+        const a = Number(p.PARCEL_ACRES) || 0;
+        const hasHome = (Number(p.BLDG_SQFT) || 0) > 0 || (Number(p.BUILT_YR) || 0) > 0;
+        return hasHome && a > 0 && a * 43560 >= floor;
+      });
       eligible.sort((a, b) => (Number(b.PARCEL_ACRES) || 0) - (Number(a.PARCEL_ACRES) || 0));  // biggest backyards first
       const capped = eligible.length > SCAN_ENRICH_CAP;
       if (capped) eligible = eligible.slice(0, SCAN_ENRICH_CAP);
@@ -1158,6 +1163,8 @@ export default function App({ profile, signOut } = {}) {
     for (const p of features) {
       const rec = freshOwner(cache, p._key);
       if (!rec?.ownerName) continue;
+      // only real homes count — skip sliver/vacant parcels (no building) that share an address (see 557 E Walnut Brook)
+      if (!((Number(p.BLDG_SQFT) || 0) > 0 || (Number(p.BUILT_YR) || 0) > 0)) continue;
       items.push({
         ownerName: rec.ownerName, mailingAddr: rec.mailingAddr, parcelId: p._key,
         address: p.PARCEL_ADD, city: p.PARCEL_CITY, county: p.COUNTY_NAME,
